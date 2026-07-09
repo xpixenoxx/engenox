@@ -1,0 +1,18 @@
+# pnpm-workspace.yaml — the TS workspace roots (24 §2 + 24 §8).
+# pnpm silently skips glob matches without package.json; at T01 these are all .keep-only dirs.
+# T02 adds pkg/contracts/package.json; T10 adds services/*/*.json; T08 adds services/temporal; web/design-system at their tickets.
+packages:
+  - "pkg/contracts"
+  - "services/*"
+  - "web"
+  - "design-system"
+  - "tools"
+  # libs TS bindings land per-ticket (e.g. libs/kg/ts/) — add to this list when their package.json lands.
+
+  # pnpm 11's build-script approval — the `allowBuilds` map (dep name → bool). pnpm 11 no longer reads
+  # package.json's `pnpm` field, and ignores the older `onlyBuiltDependencies` list for nx (it re-inserts
+  # a `set this to true or false` placeholder on `pnpm install` and expects it filled). nx is the only
+  # trusted dep with a postinstall; pre-approving it makes `pnpm install` exit 0 in CI (the T01 acceptance).
+allowBuilds:
+  esbuild: true
+  nx: true

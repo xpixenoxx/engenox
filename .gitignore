@@ -1,0 +1,52 @@
+# .gitignore — generated artifacts + secrets + state (REPO_CONVENTIONS.md E12).
+# NOTE: .mcp.json (T09) + .claude/ (T08) are NOT gitignored — both are version-controlled surfaces.
+
+# generated codegen
+pkg/contracts/generated/
+
+# JS / TS
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+.nx-cache/
+.nx/
+
+# Python
+.venv/
+__pycache__/
+.mypy_cache/
+*.py[cod]
+*$py.class
+
+# coverage
+coverage/
+.coverage
+htmlcov/
+
+# IaC state + plans
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+*.tfplan
+
+# Atlas
+*.atlas.hcl
+
+# secrets + local env (Trufflehog/gitleaks is the backstop; the convention is the first defense)
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# langfuse / otel local
+.langfuse/

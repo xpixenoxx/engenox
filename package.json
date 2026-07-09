@@ -1,0 +1,10 @@
+{
+  "name": "engenox-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Engenox — the AI Visibility Operating System. Workspace root. Read CLAUDE.md first.",
+  "//": "T01 ships the build-orchestrator holder only — no per-service package.json (those land at T02 / T10–T14). nx is the audited monorepo orchestrator (29 §6; ADR-0001). The pnpm version is NOT pinned here — mise.toml is the single source of the toolchain (29 §6).",
+  "devDependencies": {
+    "nx": "23.0.1"
+  }
+}

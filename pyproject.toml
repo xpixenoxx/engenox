@@ -1,0 +1,29 @@
+# pyproject.toml (root) — the uv workspace root (24 §2 + 24 §8).
+# T01 ships the WORKSPACE shell; per-service pyproject.toml land at T12 (services/measurement) + T15 (libs/kg).
+[project]
+name = "engenox-workspace"
+version = "0.0.0"
+requires-python = ">=3.13"
+
+[tool.uv.workspace]
+# T02 adds the first member: pkg/contracts (the `engenox-contracts` package — the cross-
+# language contract surface, 24 §6). T12 adds "services/measurement"; T15 adds "libs/kg".
+# `uv sync` editable-installs the contract package so `import engenox.entity.v1.entity_pb2`
+# resolves without a manual PYTHONPATH (the measurement tier consumes the published wheel).
+members = ["pkg/contracts"]
+
+[tool.uv]
+# the Python dev toolchain. mypy lives HERE (it's a pip package, not a mise standalone —
+# the ticket's "mise pins mypy" wording is weak; this is the correct home). ruff is ALSO
+# in mise.toml (the standalone binary) — tools/check-toolchain asserts the two stay in sync.
+dev-dependencies = [
+  "ruff==0.15.*",
+  "mypy>=1.13,<2",
+  # The mypy stubs for the protobuf runtime, pinned to the contracts package's protobuf
+  # range. Without this, `mypy --strict` over generated/python reports `Library stubs not
+  # installed for "google.protobuf"` and the gate is green only after a manual
+  # `uv pip install types-protobuf` — non-reproducible (CLAUDE.md §12). T02's contracts
+  # package depends on protobuf>=5.29,<6 (runtime, via the workspace member), so the stubs
+  # are version-matched to that range. `uv sync` provisions both; no manual install.
+  "types-protobuf>=5.29,<6",
+]

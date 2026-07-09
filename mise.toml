@@ -1,0 +1,19 @@
+# mise.toml — the pinned 2026 toolchain (the live form of ADR-0001).
+# A version bump to any of these is an ADR (STACK_DRIFT_WATCHDOG.md category 1).
+# mypy is pinned in pyproject.toml [tool.uv].dev-dependencies (it's a pip package, not a mise standalone).
+[tools]
+node = "22"           # Node 22 LTS ("Jod"); pnpm 11 requires Node 22+
+pnpm = "11"           # ESM-first TS workspace manager
+go = "1.24"           # range-over-func; the probe/action fleet
+python = "3.13"       # the measurement/causal tier (3.13 stable)
+uv = "latest"         # the Python workspace + lock (fast-moving; mise resolves)
+buf = "1.50"          # the contract codegen CLI (v1.x; the v2 FORMAT is T02's concern)
+biome = "2"           # the TS/JSON linter+formatter (replaces ESLint+Prettier, 29 §6)
+ruff = "0.15"         # the Python linter+formatter (standalone; also in pyproject dev-deps — must match)
+golangci-lint = "2"  # the Go linter (v2 config; configs land at T11)
+atlas = "0.30"        # the schema-as-code migration engine (still 0.x)
+opentofu = "1.9"      # the IaC (29 §6)
+"aqua:argoproj/argo-cd" = "2.13"      # the CD app-of-apps (29 §6)
+
+[env]
+# reserved — the contract-generated output (pkg/contracts/generated/) is git-ignored; codegen runs in CI (T02/T06)
