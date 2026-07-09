@@ -1,0 +1,77 @@
+// service.proto - the first gRPC service contract: the PerceptionService.Assert RPC (24 §3).
+//
+// The reference shape for a cross-service call: services/control-plane calls
+// services/perception only via the gRPC client Buf generates from this file (24 §3 +
+// CLAUDE.md §5 - never via a direct internal-package import). This exemplar is the
+// pattern a later service (Decision, Action, Measurement, Gateway - 06 / 09 / 24 §3)
+// copies; the full service taxonomy lands at M1+ as the services that need them land.
+//
+// The Assert RPC is a mutation (it writes a typed node into the truth spine), so the
+// request carries an idempotency_key - the Temporal key (06 §2.4
+// Intervention.idempotency_key discipline, broadened to every mutating RPC). A mutation
+// without an IdempotencyKey is a stack-drift watchdog hit (CLAUDE.md §8); the contract
+// makes the field present and the service validates its presence.
+//
+// Cites: 24 §3 (the cross-service call shape) + §4 (control-plane -> services only via
+// this generated client); 14 §3 (event_id is the commit's downstream idempotency key);
+// 13 §2 (memory.remember is the only write path - the service is its gRPC front);
+// CLAUDE.md §5 (the module boundaries) + §8 (the IdempotencyKey watchdog invariant);
+// ADR-0001.
+
+syntax = "proto3";
+
+package engenox.service.v1;
+
+// Assert carries an AssertedNode from the entity package (06 §2.1). The dependency arrow
+// is service -> entity (24 §4); the contract-graph check (T03) asserts it stays
+// unidirectional.
+import "engenox/entity/v1/entity.proto";
+
+// The Go import path (the contract package's Go module, 24 §6).
+option go_package = "github.com/engenox/contracts/generated/go/engenox/service/v1;servicev1";
+
+// The Perception service - the probe fleet's contract fan-in (24 §3). The proto
+// identifier is PerceptionService (the Buf STANDARD SERVICE_SUFFIX convention); 24 §3
+// names the service "perception" conceptually - the generated PerceptionServiceServer /
+// client are the cross-service seam. A stateless call; the verifier-grounding check
+// happens inside the service before the write (13 §2 - memory.remember is the only
+// write path).
+service PerceptionService {
+  // Writes a typed AssertedNode into the truth spine (06 §2.1) and returns the committed
+  // event's id (the AssertionEvent.event_id, 14 §3). Idempotent on
+  // (tenant_id, idempotency_key); a replay returns the same event_id and writes nothing
+  // new.
+  rpc Assert(AssertRequest) returns (AssertResponse);
+}
+
+// The Assert request body. Wrapping the node in a request message (not taking the
+// AssertedNode directly) is the forward-compatible gRPC shape: a field added later does
+// not break the wire (14 §5 BACKWARD). idempotency_key is required on every mutating RPC
+// (CLAUDE.md §8).
+//
+// tenant_id defense (CLAUDE.md §8 - "tenant_id accepted from a client request" is a
+// forbidden pattern): AssertRequest embeds the full AssertedNode, which carries
+// tenant_id (entity.v1 06 §2.1), so a caller COULD supply node.tenant_id. The service
+// MUST discard it - tenant_id is taken from the edge-issued JWT (15 §3), never from the
+// request body - and a service-level unit test (T11) asserts the client-supplied value is
+// overwritten. A STRUCTURAL defense (a tenant-stripped AssertInput that cannot carry
+// tenant_id) is the contract-spine-first ideal (CLAUDE.md §4) and is a tracked follow-up;
+// the procedural overwrite + test is the present mitigation.
+message AssertRequest {
+  // The typed assertion to commit into the truth spine (06 §2.1). The service injects
+  // node.tenant_id from the JWT (see the message comment above); a client-supplied
+  // node.tenant_id is ignored.
+  engenox.entity.v1.AssertedNode node = 1;
+  // The Temporal key; a mutation without one is a watchdog hit (CLAUDE.md §8).
+  string idempotency_key = 2;
+}
+
+// The Assert response (a trivial ack). Carries the event_id of the committed
+// AssertionEvent (14 §3) so the caller can trace the write into the bus and the
+// three-sinks reconciliation (14 §4). Named AssertResponse per the Buf STANDARD
+// RPC_RESPONSE_STANDARD_NAME convention (the message is the response to Assert, not a
+// shared generic Ack).
+message AssertResponse {
+  // The id of the committed AssertionEvent (14 §3) - the idempotency key downstream.
+  string event_id = 1;
+}

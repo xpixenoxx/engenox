@@ -1,0 +1,132 @@
+// event.proto - the first event contract: the AssertionEvent envelope (14 §3).
+//
+// Every CDC-emitted row and every cross-service async event is a versioned instance of
+// this typed envelope (14 §3). It is the only event shape on the bus (14 invariant 2):
+// Buf/Schema-Registry-generated in every language; no hand-written cross-language event
+// types. event_id is the idempotency key at every sink (ON CONFLICT (event_id) DO
+// NOTHING, 14 §4), so a Debezium restart or a Redpanda consumer rebalance cannot
+// double-write (14 invariant 3).
+//
+// The envelope carries schema_version (the envelope's structural version) and kg_version
+// (the KG semantic version this assertion is true-of) - the two fields the Schema
+// Registry gates (14 §5). The IntegrityTags gate the row's weight on the causal
+// estimator (06 §2.4): identification_strategy (RCT-eligible / quasi-experimental /
+// observational) and foreign_change_status (clean / suspected-bump / confirmed-bump /
+// period-invalid).
+//
+// Strict-add-only compatibility under FULL (14 §5): the AssertionEvent envelope is the
+// bus spine; any drift breaks every sink. This exemplar is the reference a later event
+// type (ProbeEvent, InterventionLifecycleEvent, DegradationAlert, WebhookOut - 14 §6)
+// copies; the full event taxonomy lands at M1+ as the services that emit them land.
+//
+// Cites: 14 §3 (the envelope) + §4 (idempotency) + §5 (compatibility); 06 §2.4
+// (IntegrityTags) + §1 principle 2 (provenance); 13 §2 (the bi-temporal Assertion
+// payload); 24 §2 (pkg/contracts root); 00 §2 invariant 8 (reproducible from a signed
+// node); ADR-0001 (the stack pin).
+
+syntax = "proto3";
+
+package engenox.event.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// The Assertion payload and ProvenanceRef come from the entity package (06 §2.1 / §2.5).
+// The dependency arrow is event -> entity (events reference entities): the natural
+// direction; the contract-graph check (T03) asserts it stays unidirectional.
+import "engenox/entity/v1/entity.proto";
+
+// The Go import path (the contract package's Go module, 24 §6).
+option go_package = "github.com/engenox/contracts/generated/go/engenox/event/v1;eventv1";
+
+// The identification strategy of an outcome row (06 §2.4). The highest weight in the
+// causal estimator goes to RCT-eligible rows (the consented panel, 13 §6); scraped /
+// observational rows are down-weighted. These tags gate the estimator weight (06 §2.4).
+enum IdentificationStrategy {
+  IDENTIFICATION_STRATEGY_UNSPECIFIED = 0;
+  // A consented-panel row (13 §6) - the highest estimator weight.
+  IDENTIFICATION_STRATEGY_RCT_ELIGIBLE = 1;
+  // A synthetic-control donor-basket row (06 §2.4).
+  IDENTIFICATION_STRATEGY_QUASI_EXPERIMENTAL = 2;
+  // A scraped/observational row (06 §2.4) - the lowest weight.
+  IDENTIFICATION_STRATEGY_OBSERVATIONAL = 3;
+}
+
+// The foreign-change status of a measurement window (06 §2.4). The honesty estimator's
+// discipline (12 §8): a foreign surface bump is never blamed on our intervention.
+// PERIOD_INVALID quarantines the outcome (12 §8) - it does NOT count as regret, does NOT
+// auto-demote, does NOT feed the scorer.
+enum ForeignChangeStatus {
+  FOREIGN_CHANGE_STATUS_UNSPECIFIED = 0;
+  // No surface-level drift detected in the window (06 §2.4).
+  FOREIGN_CHANGE_STATUS_CLEAN = 1;
+  // Drift detected; the outcome is recorded but down-weighted (12 §8).
+  FOREIGN_CHANGE_STATUS_SUSPECTED_BUMP = 2;
+  // Confirmed platform shift; the lift is partialled out via the SCM's surface-dynamics
+  // model (12 §8).
+  FOREIGN_CHANGE_STATUS_CONFIRMED_BUMP = 3;
+  // Quarantined; the row does not feed the scorer (12 §8).
+  FOREIGN_CHANGE_STATUS_PERIOD_INVALID = 4;
+}
+
+// The two integrity tags that gate an outcome row's weight on the causal estimator
+// (06 §2.4). These are load-bearing - they are the corpus's causal honesty, not
+// optional metadata (06 §2.4 commentary). The estimator reads them on every batch refit.
+message IntegrityTags {
+  // How the row was identified (06 §2.4).
+  IdentificationStrategy identification_strategy = 1;
+  // Whether the measurement window was contaminated (06 §2.4).
+  ForeignChangeStatus foreign_change_status = 2;
+}
+
+// The typed assertion payload (14 §3). The subject/predicate/object triple form - the
+// Claim shape (06 §2.1) extended with the bi-temporal axes and the supersession pointer
+// (13 §2 + §4). The object is a literal OR a node reference, discriminated by the oneof
+// (06 §3 - the edge types carry either a literal or a NodeRef on the object).
+message Assertion {
+  // The source node id (06 §2.1 Claim.subject_id).
+  string subject_id = 1;
+  // The relationship ("is_a", "competes_with", ... - 06 §2.1 Claim, 06 §3 edges).
+  string predicate = 2;
+  oneof object {
+    // A literal object value.
+    string object_literal = 3;
+    // A NodeRef's id - the related entity (canonical UUID, 06 §2).
+    string object_id = 4;
+  }
+  // When the assertion was true in the world (13 §2).
+  engenox.entity.v1.TimeInterval valid_time = 5;
+  // When Engenox wrote it (13 §2).
+  engenox.entity.v1.TimeInterval tx_time = 6;
+  // The id that replaced this one (13 §4).
+  string superseded_by = 7;
+  // The id this row negates - the ghost-bust pointer (13 §4); empty when not an
+  // anti-fact.
+  string anti_fact_for = 8;
+}
+
+// The only event shape on the bus (14 §3). Every CDC-emitted row and every cross-service
+// async fan-out is one of these. event_id is the idempotency key at every sink (14 §4);
+// the envelope's structural version (schema_version) and the KG semantic version
+// (kg_version) are the two fields the Schema Registry gates (14 §5).
+message AssertionEvent {
+  // Deterministic hash of (tenant_id, entity_id, fact_id, valid_time, tx_time) (14 §3) -
+  // the idempotency key downstream (14 §4, ON CONFLICT DO NOTHING).
+  string event_id = 1;
+  // The bus partition key (14 invariant 4); the RLS key, from the JWT never the request
+  // body (CLAUDE.md §8).
+  string tenant_id = 2;
+  // The entity this assertion concerns.
+  string entity_id = 3;
+  // The envelope's own structural version (14 §5), e.g. "v1".
+  string schema_version = 4;
+  // The KG version this assertion is true-of (the community-summary gate, 13 §3).
+  string kg_version = 5;
+  // The typed assertion (14 §3).
+  Assertion payload = 6;
+  // id_strategy + foreign_change_status (06 §2.4) - gate the estimator weight.
+  IntegrityTags tags = 7;
+  // The source (a probe, a panelist, a connector, a manual edit) (14 §3).
+  engenox.entity.v1.ProvenanceRef provenance = 8;
+  // When the event entered the bus.
+  google.protobuf.Timestamp emitted_at = 9;
+}

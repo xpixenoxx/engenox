@@ -1,0 +1,61 @@
+# buf.gen.yaml - the cross-language codegen pipeline (24 §6). `buf generate` emits TS,
+# Go, and Python into pkg/contracts/generated/ (git-ignored; produced here, published
+# from here). A dev runs `buf generate` locally; CI runs it before the per-language
+# compile (T06). The generated output is a typed import, not a checked-in drift surface
+# (24 §6).
+#
+# managed: false - the per-file `option go_package` in each proto is the source of truth
+# for the Go import paths; no hidden mangling. (managed: true would re-derive go_package
+# from the module name, which is fine, but explicitness is the exemplar choice - the
+# import path a reader sees in the proto is the path that lands.)
+#
+# Plugins (reproducibility status - candor-honest per CLAUDE.md §12; NOT uniformly pinned
+# yet. A plugin bump is a stack-drift-watchdog category-1 hit, CLAUDE.md §8):
+#   TS  @bufbuild/protoc-gen-es (local, npm devDep) - REPRODUCIBLE: pinned in pnpm-lock
+#       (resolved 2.12.1). target=ts emits .ts; import_extension=.js makes the runtime
+#       specifiers NodeNext-correct. The @engenox/contracts surface (24 §2).
+#   Go  protoc-gen-go + protoc-gen-go-grpc (local, `go install`-ed) - PATH-DEPENDENT, NOT
+#       version-pinned here: `local:` execs whatever binary is on PATH. Reproducibility
+#       needs a pinned `go install ...@vX.Y.Z` step. (TODO(ADR, owner): add a tools/
+#       wrapper + mise task pinning protoc-gen-go@v1.36.11 + protoc-gen-go-grpc to the
+#       go.mod versions, citing ADR-0001.) paths=source_relative under generated/go/.
+#   Python  the Buf-managed remote `buf.build/protocolbuffers/python` (no local
+#       protoc-gen-python) - NOT version-pinned (no buf.lock; floating BSR channel).
+#       (TODO(ADR, owner): pin via a buf.lock / a managed version.)
+#
+# Cites: 24 §6 (generated-artifact discipline); ADR-0001 (the Buf stack pin); T02.
+
+version: v2
+
+managed:
+  enabled: false
+
+plugins:
+  # TS via @bufbuild/protoc-gen-es (local, npm-installed into this package's devDeps).
+  # Buf v2 `local:` execs the literal binary name (no protoc-gen- prefix prepended), so
+  # the value is the full plugin binary. target=ts emits .ts; import_extension=.js makes
+  # the runtime import specifiers NodeNext-correct (`from "./x_pb.js"`).
+  - local: protoc-gen-es
+    out: generated/ts
+    opt:
+      - target=ts
+      - import_extension=.js
+
+  # Go via google.golang.org/protobuf (local, `go install`-ed). paths=source_relative
+  # mirrors the proto source path (engenox/entity/v1/entity.pb.go) under generated/go/.
+  - local: protoc-gen-go
+    out: generated/go
+    opt:
+      - paths=source_relative
+
+  # The gRPC server/client stubs for the service proto (only service.proto has a
+  # `service` definition; the other protos emit only *_pb.go).
+  - local: protoc-gen-go-grpc
+    out: generated/go
+    opt:
+      - paths=source_relative
+
+  # Python via the Buf-managed remote plugin (no local protoc-gen-python needed).
+  # Emits <package>/.../<file>_pb2.py under generated/python/.
+  - remote: buf.build/protocolbuffers/python
+    out: generated/python

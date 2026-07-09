@@ -68,6 +68,7 @@
 | E16 | Stack drift watchdog specification | ✅ | `docs/enforcement/STACK_DRIFT_WATCHDOG.md` |
 | E17 | M0 implementation plan + tickets | ✅ | `docs/tickets/M0/` (README + T01–T15) |
 | E18 | M0 ticket 1 implementation + reviews + checkpoint | ✅ (T01 closed — config complete, run-here-possible acceptances green, Tier-1 review passed; `mise install` + `go work sync` pending a mise/Go-installed environment, deterministic from the config) | `docs/tickets/M0/T01-repo-workspace-bootstrap.md` |
+| E19 | M0 ticket 2 (T02) - the contract spine (Buf + first v1 protos + codegen) | 🚧 (source committed at the foundation checkpoint; the **TS half is GREEN and verified in-session** - vitest round-trip 3/3, `tsc --noEmit` strict, `generated/` confirmed gitignored. The **Go + Python halves are NOT re-verified this session**: `buf`/`go`/Go protoc plugins absent locally and `mise` is not installed, so the 3-language codegen + `go build` + `mypy`-3.13 verifying acceptances are PENDING a mise-pinned environment. On-disk `generated/go` + `generated/python` are from a prior toolchain run, unverified by me here. Open reproducibility TODOs flagged inline in `buf.gen.yaml`: the Go plugin is path-dependent (not `@vX`-pinned); the Python BSR plugin is floating (no `buf.lock`). Flip to ✅ when the full 3-lang verify lands.) | `docs/tickets/M0/T02-contract-spine-buf-codegen.md` + `pkg/contracts/` |
 
 ## Operating rules for this build
 - Intelligence core is FROZEN — never re-litigate philosophy in docs 01–27.

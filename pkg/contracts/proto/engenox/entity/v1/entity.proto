@@ -1,0 +1,180 @@
+// entity.proto - the first entity contract: the abstract AssertedNode (06 §2).
+//
+// AssertedNode is the unit of the truth spine: the abstract root every brand-truth,
+// AI-surface, and intervention/outcome entity inherits from (06 §2). It carries the
+// bi-temporal axes (valid_time / tx_time), the provenance fan-back to a re-derivable
+// tree, and the supersession pointer that forbids destructive updates (13 §2 + §4).
+// Its design encodes invariant 8 of the foundation synthesis: every commit-to-state is
+// reproducible from a signed graph node (00 §2 invariant 8).
+//
+// This is the golden-path exemplar for contracts (28 §4): a later entity type
+// (Organization, Product, ...) lands at M1 as a new member of this package and copies
+// this header structure, the doc-pointer comments, and the strict-add-only v1
+// discipline (14 §5 + 18 §8). A v2 namespace is a future major-version migration, not
+// an in-place edit. Adding an optional field or an enum value is allowed today;
+// removing, renaming, or changing a field's type breaks FULL compatibility (14 §5) and
+// the contract-compat CI gate (T06) will reject it.
+//
+// Cites: 06 §2 (entity taxonomy); 13 §2 + §4 (bi-temporal supersession); 14 §3 (the
+// AssertionEvent envelope references these types); 24 §2 (pkg/contracts root);
+// 00 §2 invariant 8 (reproducible from a signed node); ADR-0001 (the stack pin).
+
+syntax = "proto3";
+
+package engenox.entity.v1;
+
+// The temporal bound for bi-temporal assertions (13 §2 valid_time / tx_time).
+import "google/protobuf/timestamp.proto";
+
+// The Go import path. Generated Go lands at the github.com/engenox/contracts module
+// (24 §6); per-package paths keep the import graph flat and parallel to the TS/Python
+// outputs. (entityv1 is the Go package name; v1 is the strict-add-only namespace.)
+option go_package = "github.com/engenox/contracts/generated/go/engenox/entity/v1;entityv1";
+
+// The concrete top-level entity types the spine discriminates (06 §2). Every
+// AssertedNode instance carries one. The MVP subset is in scope (06 §6); the deferred
+// expansion (ClaimRestoration interventions, Person authoritativeness depth, the
+// ecosystem candidate-fact types) is reserved and lands at M1+.
+enum EntityType {
+  // The zero value. A verified seam never emits this; a row that carries it is a bug,
+  // caught by the SHACL conformance check (06 §4).
+  ENTITY_TYPE_UNSPECIFIED = 0;
+
+  // Brand-Truth entities (06 §2.1) - the brand-authored source of truth.
+  ENTITY_TYPE_ORGANIZATION = 1;
+  ENTITY_TYPE_PRODUCT = 2;
+  // The Person discriminant ships in the MVP enum (Person is a 06 §2 taxonomy type); the
+  // Person PAYLOAD message + its authoritativeness-depth features (06 §6 defers "Person
+  // authoritativeness") land at M1. No MVP seam creates a PERSON node yet.
+  ENTITY_TYPE_PERSON = 3;
+  ENTITY_TYPE_CLAIM = 4;
+  ENTITY_TYPE_TOPIC = 5;
+  ENTITY_TYPE_BUYER_QUERY = 6;
+
+  // AI-surface entities (06 §2.2) - what the surfaces believe.
+  ENTITY_TYPE_ANSWER_EVENT = 7;
+  ENTITY_TYPE_MENTION = 8;
+  ENTITY_TYPE_SURFACE_ASSERTION = 9;
+  ENTITY_TYPE_COMPETITOR = 10;
+
+  // Conflict types (06 §2.3) - the trigger for the Decision layer's abductive reasoning.
+  ENTITY_TYPE_KNOWLEDGE_CONFLICT = 11;
+
+  // Intervention and Outcome entities (06 §2.4) - the action spine's vocabulary.
+  ENTITY_TYPE_INTERVENTION = 12;
+  ENTITY_TYPE_ACTION_RECORD = 13;
+  ENTITY_TYPE_OUTCOME = 14;
+
+  // Reserved for the M1+ expansion (06 §6). Per the additive-only discipline (14 §5)
+  // the boundary is documented rather than silent.
+  reserved 15 to 999;
+}
+
+// The provenance source discriminator (06 §2.5 ProvenanceRef.source_type). Every
+// assertion points back to one of these; the auditor reconstructs the chain from
+// "what does ChatGPT say about {Brand} right now" back to the verbatim sample
+// (06 §1 principle 2).
+enum ProvenanceSourceType {
+  PROVENANCE_SOURCE_TYPE_UNSPECIFIED = 0;
+  // A Perception probe sample - the highest-volume source (06 §2.2).
+  PROVENANCE_SOURCE_TYPE_PROBE_SAMPLE = 1;
+  // A manual Brand-Truth edit by the tenant (06 §2.1).
+  PROVENANCE_SOURCE_TYPE_BRAND_CARD_EDIT = 2;
+  // A CRM/CMS/feed connector pull - structured ingestion, not LLM (06 §2.5).
+  PROVENANCE_SOURCE_TYPE_CONNECTOR = 3;
+  // A consented-panel human review (13 §6) - the id_strategy=RCT-eligible ground truth.
+  PROVENANCE_SOURCE_TYPE_HUMAN_REVIEW = 4;
+  // A cross-tenant de-identified cohort aggregate (13 §7), never row-level.
+  PROVENANCE_SOURCE_TYPE_FEDERATED = 5;
+  reserved 6 to 999;
+}
+
+// A half-open temporal interval [start, end) over UTC instants - the contract-level
+// portable form of a Postgres TSTZRANGE (13 §2). The repository boundary is the only
+// place this maps to a range type in storage. end is exclusive and may be unset for an
+// open interval (a fact still currently true of the world, 13 §4).
+message TimeInterval {
+  // The inclusive start instant. For an assertion this is when the fact became true in
+  // the world (valid_time) or when Engenox wrote it (tx_time).
+  google.protobuf.Timestamp start = 1;
+  // The exclusive end instant. Unset = still true (open TSTZRANGE, 13 §4).
+  google.protobuf.Timestamp end = 2;
+}
+
+// A distribution summary for a measurable assertion (06 §2 - confidence: Distribution
+// where measurable). This is the summary-statistics form for the BINOMIAL surfaces -
+// mention_prob and avg_rank (06 §2.2). The multinomial stance_distribution (06 §2.2
+// `stance_distribution: Multinomial`) is a SEPARATE M1 type: (sample_count, mean,
+// standard_deviation) are binomial summary stats, NOT a multinomial's per-category
+// sufficient statistics. The conformal-calibrated LiftDistribution the action-spine uses
+// is a distinct M1 type - not in this exemplar.
+message Distribution {
+  // The sample count this aggregate summarizes (06 §2.2 - "over N samples").
+  uint32 sample_count = 1;
+  // The binomial point estimate (the mention-probability / avg-rank mean).
+  double mean = 2;
+  // The cached spread; the exact-distribution inference lives in the measurement tier.
+  double standard_deviation = 3;
+}
+
+// A pointer to a re-derivable source - every assertion's audit fan-back (06 §2.5).
+// signed_at + source_id encode the dual-canonical reproducibility: a fact is
+// reproducible back to a signed graph node (00 §2 invariant 8).
+message ProvenanceRef {
+  // The source class (06 §2.5).
+  ProvenanceSourceType source_type = 1;
+  // The id of the source node (typically an AnswerEvent.id for a perception assertion),
+  // a UUID string in canonical hyphen form (06 §2).
+  string source_id = 2;
+  // The Extract seam's model-id + prompt-version (06 §2.5 extracted_by), e.g.
+  // "claude-haiku-4-5@extract.v3". Stored verbatim for a replayable extraction; never
+  // redacted (the candor floor, 26 §6 - the Provenance Audit Hover needs it).
+  string extracted_by = 3;
+  // The verifier's model-id + version if re-grounded (06 §2.5 reverified_by). Empty when
+  // the assertion has not been re-verified.
+  string reverified_by = 4;
+  // The signature timestamp of the corpus row the assertion derives from (06 §2.5); the
+  // integrity check is reproducible from a signed graph node (00 §2 invariant 8).
+  google.protobuf.Timestamp signed_at = 5;
+}
+
+// The abstract root of every typed node on the truth spine (06 §2.1). Brand-Truth,
+// AI-surface, and intervention/outcome entities are instances carrying a discriminant
+// in entity_type plus their own payload alongside. Every field here is bi-temporal
+// (13 §2): valid_time (when it was true in the world) and tx_time (when Engenox
+// asserted it). The only read path is assertion_view, parameterized by as_of (13 §2 -
+// the lookahead-bias defense).
+message AssertedNode {
+  // Deterministic UUID: hash(tenant_id, type, natural_keys) (06 §2.1). Cross-language
+  // stable - ties the Postgres row, the AGE vertex, the FalkorDB vertex, and the R2
+  // manifest pointer to one identity.
+  string id = 1;
+  // The tenant identifier (06 §2.1 tenant_id - the RLS key). NEVER accepted from a
+  // client request; taken from the JWT (CLAUDE.md §8 - a stack-drift watchdog invariant).
+  // The field is here for cross-language consumers; its source is the edge-issued JWT.
+  string tenant_id = 2;
+  // The concrete entity type (06 §2.1). Discriminates the payload - a node with
+  // ENTITY_TYPE_ORGANIZATION carries an Organization payload alongside (Organization
+  // lands at M1).
+  EntityType entity_type = 3;
+  // When the fact was true in the world (13 §2 valid_time - a TSTZRANGE). The causal
+  // scorer reads this at a specific as_of so estimator input reflects what was known
+  // then, not what is true now (13 §4 - the lookahead-bias defense).
+  TimeInterval valid_time = 4;
+  // When Engenox asserted the fact (13 §2 tx_time). Appended-only; an assertion's
+  // tx_time never changes. Supersession writes a new row with its own tx_time; the old
+  // row is retained (13 §4 - no destructive updates).
+  TimeInterval tx_time = 5;
+  // The audit fan-back (06 §2.1 provenance). An empty ProvenanceRef is forbidden by
+  // invariant 2 (06 §7) - a SHACL check rejects it (06 §4). Present on every node so a
+  // consumer needs no separate History call to find the source tree.
+  ProvenanceRef provenance = 6;
+  // The multi-sample belief where measurable (06 §2.1 - confidence: Distribution where
+  // measurable). Unset for brand-authored facts (declarative truth); set for surface
+  // observations (06 §2.2 multi-sample distributions).
+  Distribution confidence = 7;
+  // The supersession pointer: the id of the assertion that replaced this one, or empty
+  // when current (06 §2.1). 13 §4: the old row is NOT deleted - it is marked
+  // superseded_by, and the bi-temporal as_of read still recovers it.
+  string superseded_by = 8;
+}

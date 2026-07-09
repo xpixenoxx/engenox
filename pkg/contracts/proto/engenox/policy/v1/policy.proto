@@ -1,0 +1,75 @@
+// policy.proto - the first policy contract: the autonomy dial + the blast-radius band
+// (12 for the dial; 12 §3 / 06 §2.4 for the band).
+//
+// The Cedar two-pass gate evaluates the pair (dial_level, blast_radius_band) per
+// PlanNode (12 §4); the autonomy dial ledger earns escalation on three measured axes
+// (12 §5). These are the symbolic types the policy layer operates on - the frontend's
+// four-label human metaphor (Off / Co-pilot / Auto-pilot with review / Full auto-pilot -
+// 10 §5) is a web/ presentation concern, NOT a contract type; the contract carries the
+// seven symbolic levels the gate and the ledger actually reason over.
+//
+// NOTE on the ticket's "Co-pilot/Specialist" phrasing: "Co-pilot" is the frontend
+// metaphor for the PROPOSE level (10 §5 + 26 - the MVP default). "Specialist" is an
+// LLM-seam role (12 §2 - the schema.org / content-brief / canonical-tag specialists),
+// NOT a dial level anywhere in the frozen docs. Per the candor floor this enum uses the
+// seven symbolic level names the gate operates on; the conflation is flagged here, not
+// silently encoded as a "Specialist" level (which would be a fabricated type and a
+// candor-floor breach, CLAUDE.md §8).
+//
+// Cites: 12 §4 (the seven levels) + §5 (earned escalation) + §7 (auto-demotion on
+// regret); 06 §2.4 / 12 §3 (BlastRadiusBand); 10 §5 + 19 (the four-label metaphor);
+// 26 (Co-pilot = PROPOSE is the MVP default); 24 §2 (the policy namespace); ADR-0001.
+
+syntax = "proto3";
+
+package engenox.policy.v1;
+
+// The Go import path (the contract package's Go module, 24 §6).
+option go_package = "github.com/engenox/contracts/generated/go/engenox/policy/v1;policyv1";
+
+// The seven symbolic autonomy levels (12 §4). The dial is per-tenant per-surface
+// (12 §5); no tenant starts above PROPOSE (the frontend's Co-pilot, 26); escalation
+// above it is earned on three measured axes (12 §5) and opt-in; demotion is automatic
+// and visible (12 §7). The MVP never unlocks beyond PROPOSE (26 P2.1).
+enum DialLevel {
+  // The zero value; never written by a verified Cedar evaluation.
+  DIAL_LEVEL_UNSPECIFIED = 0;
+  // Perceive and diagnose only; render the conflict + the would-be plan (12 §4).
+  DIAL_LEVEL_READ = 1;
+  // + ScoreAndPlan; the plan DAG is rendered as a bullet list (12 §4).
+  DIAL_LEVEL_RECOMMEND = 2;
+  // + Specialist artifacts; the JSON-LD / brief / diff hunk is generated and shown
+  // (12 §4). ("Specialist" is an LLM-seam role here named as the capability it unlocks,
+  // not a dial level - see the file header note.)
+  DIAL_LEVEL_DRAFT = 3;
+  // + Action.PR-open; a PR is opened, human merge required (12 §4) - the MVP default
+  // (the frontend's Co-pilot, 26).
+  DIAL_LEVEL_PROPOSE = 4;
+  // + Action.PR-open-and-assign; a PR is opened and assigned; human approval is a
+  // Temporal Signal (12 §4 / §6).
+  DIAL_LEVEL_EXECUTE_WITH_APPROVAL = 5;
+  // + Action.PR-merge (auto, within the blast-radius cap); rollback-hash pre-staged
+  // (12 §4).
+  DIAL_LEVEL_GUARDED = 6;
+  // + Action.PR-merge (auto, full cap) + batched scheduling (12 §4).
+  DIAL_LEVEL_AUTONOMOUS = 7;
+}
+
+// The blast-radius band a PlanNode's intervention occupies (12 §3
+// PlanNode.blast_radius_band). The Cedar second pass maps (dial_level, blast_radius_band)
+// -> permitted | denied (12 §4 + 09 §6). A PROPOSE-level tenant cannot auto-merge a
+// canonical redirect even if the dial were raised - the band is the structural floor
+// (10 §5).
+enum BlastRadiusBand {
+  BLAST_RADIUS_BAND_UNSPECIFIED = 0;
+  // A single page / template edit (12 §3).
+  BLAST_RADIUS_BAND_SINGLE_PAGE = 1;
+  // A bounded multi-page edit (12 §3).
+  BLAST_RADIUS_BAND_MULTI_PAGE = 2;
+  // A sitewide change (12 §3).
+  BLAST_RADIUS_BAND_SITEWIDE = 3;
+  // A canonical change (12 §3) - the highest-trust band.
+  BLAST_RADIUS_BAND_CANONICAL = 4;
+  // A redirect-map rebuild (12 §3).
+  BLAST_RADIUS_BAND_REDIRECT = 5;
+}

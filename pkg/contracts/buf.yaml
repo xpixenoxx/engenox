@@ -1,0 +1,26 @@
+# buf.yaml - the Buf module config for the contract package (24 §2, the fan-IN root).
+# At M0 the module is self-contained: no external proto deps. Adding one (e.g. googleapis)
+# is an ADR-level change (ADR-0001), not a silent edit - bumping a dep is a stack-drift
+# watchdog category-1 hit (CLAUDE.md §8).
+#
+# Lint: STANDARD (the Buf-recommended reversible set - directory/package alignment,
+# enum-zero-value suffix, enum-value prefix, file naming, etc.). Breaking: FILE (the
+# strictest, file-level wire compatibility - a removed/renamed/retyped field fails the
+# gate). The contract-compat CI gate (T06) runs `buf breaking --against .git#branch=main`;
+# an incompatible change fails it.
+#
+# Cites: 24 §2 (pkg/contracts root) + §6 (generated-artifact discipline); ADR-0001 (the
+# Buf stack pin); T02 (the contract spine).
+
+version: v2
+
+modules:
+  - path: proto
+
+lint:
+  use:
+    - STANDARD
+
+breaking:
+  use:
+    - FILE

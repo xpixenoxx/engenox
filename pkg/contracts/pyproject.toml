@@ -1,0 +1,59 @@
+# pyproject.toml - the Python contract package (24 §6). Installed as `engenox-contracts`;
+# built from generated/python/ (git-ignored; produced by `buf generate`).
+#
+# The generated `_pb2.py` modules are built dynamically by the protobuf runtime; their
+# type surface comes from the `protobuf` package stubs. At M0 every `engenox.*` module is
+# generated (no hand-written Python in this package), so the broad mypy override below
+# relaxes only codegen modules - for now. When a hand-written `engenox.*` module is added
+# later, NARROW that override (see the note at the override) so the hand-written module
+# stays strict; the broad `engenox.*` pattern as written would relax it too (a candor-floor
+# breach, CLAUDE.md §12). Generating `.pyi` stubs is a later-milestone add.
+#
+# Cites: 24 §6 (generated-artifact discipline); ADR-0001 (the Python stack pin); T02.
+
+[project]
+name = "engenox-contracts"
+version = "0.1.0"
+description = "Engenox cross-language contracts (Protobuf-generated Python surface)."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+  "protobuf>=5.29,<6",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = { "" = "generated/python" }
+
+[tool.setuptools.packages.find]
+where = ["generated/python"]
+# The Buf python plugin emits *_pb2.py with NO __init__.py (PEP-420 namespace dirs:
+# engenox/, engenox/entity/, engenox/entity/v1/). `namespaces = true` tells setuptools to
+# discover PEP-420 namespace packages - without it `find` skips namespace dirs (its
+# `namespaces` default is false) and the built wheel contains NO modules, so
+# `import engenox.entity.v1.entity_pb2` fails from the measurement tier even though
+# `mypy` passes against the source tree (24 §6 - publishable from here).
+namespaces = true
+
+# mypy --strict is the gate. The generated _pb2 modules are codegen (the protobuf runtime
+# builds their classes dynamically); their type surface comes from the `protobuf` package
+# stubs. The override relaxes the untyped-def rules the dynamic pattern trips.
+#
+# Candor floor (CLAUDE.md §12): the override pattern is the BROAD `engenox.*`, NOT the
+# narrow `engenox._*` an earlier comment claimed. Correct at M0 (every `engenox.*` module
+# is generated); when a hand-written `engenox.<name>` module is added, NARROW this
+# override to the generated stubs only (an explicit list of the `engenox.<ns>.v1.*_pb2`
+# modules, or a `_pb2`-suffixed glob VERIFIED against mypy) so the hand-written module
+# stays strict.
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["engenox.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false
