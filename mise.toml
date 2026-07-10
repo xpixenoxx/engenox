@@ -5,6 +5,23 @@
 node = "22"           # Node 22 LTS ("Jod"); pnpm 11 requires Node 22+
 pnpm = "11"           # ESM-first TS workspace manager
 go = "1.24"           # range-over-func; the probe/action fleet
+# the two Go codegen plugins buf's `local:` execs at gen time (ADR-0001; T02). Pinned via
+# the aqua backend (prebuilt binaries — the `go:` backend fails for protoc-gen-go-grpc:
+# google.golang.org/grpc/cmd/protoc-gen-go-grpc moved out of the grpc module at v1.68.0).
+# A fresh clone's `mise install` provisions both from these pins; WITHOUT them the shims are
+# merely PATH-resolved (whatever a prior install left) — `buf generate`'s Go step fails on
+# a clean checkout. That §12 reproducibility hole is closed here (resolved from the
+# buf.gen.yaml candor TODO). Bumping either is a category-1 stack-drift hit (CLAUDE.md §8).
+#
+# Version relationship (honest, NOT "== go.mod X.Y.Z" — the plugin semver and the runtime
+# lib semver are independent lines): protoc-gen-go@1.36.11 releases aligned with the
+# protobuf-go module, so it DOES == go.mod google.golang.org/protobuf v1.36.11. But
+# protoc-gen-go-grpc has its OWN semver (1.2->1.6); go.mod grpc v1.68.0 is the RUNTIME the
+# generated stubs import. The two need to be COMPATIBLE, not equal — and `go build ./...`
+# green is the proof (the generated grpc stubs compile against grpc v1.68.0). The 1.6.2
+# binary is what produced that green output, so 1.6.2 is the proven-compatible pin.
+"aqua:protocolbuffers/protobuf-go/protoc-gen-go"   = "1.36.11"  # == go.mod google.golang.org/protobuf v1.36.11
+"aqua:grpc/grpc-go/protoc-gen-go-grpc"             = "1.6.2"    # binary semver; compatible w/ go.mod grpc v1.68.0 (`go build` green)
 python = "3.13"       # the measurement/causal tier (3.13 stable)
 uv = "latest"         # the Python workspace + lock (fast-moving; mise resolves)
 buf = "1.50"          # the contract codegen CLI (v1.x; the v2 FORMAT is T02's concern)

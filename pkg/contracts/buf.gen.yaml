@@ -9,21 +9,32 @@
 # from the module name, which is fine, but explicitness is the exemplar choice - the
 # import path a reader sees in the proto is the path that lands.)
 #
-# Plugins (reproducibility status - candor-honest per CLAUDE.md §12; NOT uniformly pinned
-# yet. A plugin bump is a stack-drift-watchdog category-1 hit, CLAUDE.md §8):
-#   TS  @bufbuild/protoc-gen-es (local, npm devDep) - REPRODUCIBLE: pinned in pnpm-lock
-#       (resolved 2.12.1). target=ts emits .ts; import_extension=.js makes the runtime
-#       specifiers NodeNext-correct. The @engenox/contracts surface (24 §2).
-#   Go  protoc-gen-go + protoc-gen-go-grpc (local, `go install`-ed) - PATH-DEPENDENT, NOT
-#       version-pinned here: `local:` execs whatever binary is on PATH. Reproducibility
-#       needs a pinned `go install ...@vX.Y.Z` step. (TODO(ADR, owner): add a tools/
-#       wrapper + mise task pinning protoc-gen-go@v1.36.11 + protoc-gen-go-grpc to the
-#       go.mod versions, citing ADR-0001.) paths=source_relative under generated/go/.
-#   Python  the Buf-managed remote `buf.build/protocolbuffers/python` (no local
-#       protoc-gen-python) - NOT version-pinned (no buf.lock; floating BSR channel).
-#       (TODO(ADR, owner): pin via a buf.lock / a managed version.)
+# Plugins (reproducibility status — candor-honest per CLAUDE.md §12; a plugin bump is a
+# stack-drift-watchdog category-1 hit, CLAUDE.md §8):
+#   TS   @bufbuild/protoc-gen-es (local, npm devDep) — REPRODUCIBLE: pinned in pnpm-lock
+#        (resolved 2.12.1). target=ts emits .ts; import_extension=.js makes the runtime
+#        specifiers NodeNext-correct. The @engenox/contracts surface (24 §2).
+#   Go   protoc-gen-go + protoc-gen-go-grpc (local) — REPRODUCIBLE: pinned EXACT in
+#        mise.toml via the go: backend (go:google.golang.org/protobuf/cmd/protoc-gen-go =
+#        "1.36.11"; go:google.golang.org/grpc/cmd/protoc-gen-go-grpc = "1.68.0"), matching
+#        go.mod exactly. A fresh clone's `mise install` provisions them; `local:` execs the
+#        mise shim. (Resolved at T02 from the prior PATH-dependent caveat.) paths=
+#        source_relative under generated/go/.
+#   Py   the Buf-managed remote `buf.build/protocolbuffers/python` (no local protoc-gen-
+#        python) — emits gencode 7.35.1 (the plugin's floating-latest at T02). The protobuf
+#        RUNTIME in pkg/contracts/pyproject is pinned `protobuf>=7.35,<8` to MATCH that
+#        gencode, else `import engenox.*._pb2` raises ValidateProtobufRuntimeVersion — the
+#        CLAUDE.md §12 defect caught at T02 verify (runtime 5.29 < gencode 7.35.1 imported-
+#        and-raised while `mypy --strict` was green, because mypy never imports). The career
+#        gate `test:py` (scripts/py-roundtrip.py) imports every *_pb2 under the runtime so a
+#        future plugin bump that outruns the runtime RAISES THE GATE, not silently.
+#        The PLUGIN ITSELF is not yet version-pinned: `buf plugin update` governs only check
+#        plugins (not codegen), and the BSR rate-limited version enumeration at T02 verify.
+#        OPEN follow-up (TODO(ADR, owner)): pin via a `:vN.M` remote suffix here + match the
+#        runtime to that pinned gencode.
 #
-# Cites: 24 §6 (generated-artifact discipline); ADR-0001 (the Buf stack pin); T02.
+# Cites: 24 §6 (generated-artifact discipline); ADR-0001 (the Buf stack pin); T02;
+#        CLAUDE.md §12 (the candor floor on the gencode↔runtime match).
 
 version: v2
 

@@ -17,9 +17,10 @@
   "scripts": {
     "gen": "buf generate && node scripts/ensure-pyinit.mjs",
     "lint": "buf lint",
-    "breaking": "buf breaking --against .git#branch=main,subdir=pkg/contracts",
+    "breaking": "buf breaking --against ../../.git#branch=main,subdir=pkg/contracts",
     "build": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:py": "uv run python scripts/py-roundtrip.py"
   },
   "devDependencies": {
     "@bufbuild/protoc-gen-es": "^2.5.0",

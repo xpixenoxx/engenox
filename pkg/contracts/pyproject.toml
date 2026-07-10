@@ -18,7 +18,17 @@ description = "Engenox cross-language contracts (Protobuf-generated Python surfa
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-  "protobuf>=5.29,<6",
+  # The protobuf RUNTIME must match the gencode the BSR `protocolbuffers/python` plugin
+  # emits, or `import engenox.*._pb2` raises ValidateProtobufRuntimeVersion ("Runtime
+  # version cannot be older than the linked gencode version"). The plugin (floating-latest at
+  # T02) emits gencode 7.35.1, so the runtime is pinned >=7.35 (protobuf 7.35.1 is the
+  # matching PyPI release). The py-roundtrip gate (scripts/py-roundtrip.py, run by `test:py`)
+  # imports + round-trips a generated message under THIS runtime, so the import is
+  # GREEN-or-fail — never green-only-by-static-check (CLAUDE.md §12). That was the T02-verify
+  # defect: runtime 5.29 < gencode 7.35.1 imported-and-raised, but `mypy --strict` passed
+  # because mypy never imports. Pinning the BSR plugin itself (not just matching its gencode
+  # to the runtime) is an OPEN follow-up — the Python candor note in buf.gen.yaml.
+  "protobuf>=7.35,<8",
 ]
 
 [build-system]
@@ -40,7 +50,11 @@ namespaces = true
 
 # mypy --strict is the gate. The generated _pb2 modules are codegen (the protobuf runtime
 # builds their classes dynamically); their type surface comes from the `protobuf` package
-# stubs. The override relaxes the untyped-def rules the dynamic pattern trips.
+# stubs. The override relaxes the untyped-def AND the untyped-call rules the dynamic
+# pattern trips: each generated *_pb2.py calls _descriptor_pool.Default() (T02 verify
+# found 4 [no-untyped-call] sites, one per module) — Default() is untyped in types-protobuf
+# and under disallow_untyped_calls it fails strict. The call relaxation is the same
+# codegen-only class as the def relaxation; it is NOT a hand-written-code pass.
 #
 # Candor floor (CLAUDE.md §12): the override pattern is the BROAD `engenox.*`, NOT the
 # narrow `engenox._*` an earlier comment claimed. Correct at M0 (every `engenox.*` module
@@ -57,3 +71,4 @@ module = ["engenox.*"]
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 check_untyped_defs = false
+disallow_untyped_calls = false

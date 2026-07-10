@@ -12,18 +12,28 @@ requires-python = ">=3.13"
 # resolves without a manual PYTHONPATH (the measurement tier consumes the published wheel).
 members = ["pkg/contracts"]
 
-[tool.uv]
 # the Python dev toolchain. mypy lives HERE (it's a pip package, not a mise standalone —
 # the ticket's "mise pins mypy" wording is weak; this is the correct home). ruff is ALSO
 # in mise.toml (the standalone binary) — tools/check-toolchain asserts the two stay in sync.
-dev-dependencies = [
+#
+# `dependency-groups.dev` is the PEP-735 home (uv >=0.4). The prior `[tool.uv].dev-dependencies`
+# field uv printed a deprecation warning for during T02's mypy gate, and a future uv will
+# REMOVE it — a latent break with `uv = "latest"` in mise.toml. Migrated during T02 verify
+# so `uv sync` stays reproducible as uv advances (CLAUDE.md §12 — a gate green only because
+# the current tool tolerates a deprecated field is an inflated score).
+[dependency-groups]
+dev = [
   "ruff==0.15.*",
   "mypy>=1.13,<2",
-  # The mypy stubs for the protobuf runtime, pinned to the contracts package's protobuf
-  # range. Without this, `mypy --strict` over generated/python reports `Library stubs not
-  # installed for "google.protobuf"` and the gate is green only after a manual
-  # `uv pip install types-protobuf` — non-reproducible (CLAUDE.md §12). T02's contracts
-  # package depends on protobuf>=5.29,<6 (runtime, via the workspace member), so the stubs
-  # are version-matched to that range. `uv sync` provisions both; no manual install.
-  "types-protobuf>=5.29,<6",
+  # The mypy stubs for the protobuf runtime. Without this, `mypy --strict` over
+  # generated/python reports `Library stubs not installed for "google.protobuf"` and the
+  # gate is green only after a manual `uv pip install types-protobuf` — non-reproducible
+  # (CLAUDE.md §12). The stubs track the protobuf line the contracts runtime uses
+  # (protobuf>=7.35,<8 — matching the BSR `protocolbuffers/python` plugin's gencode 7.35.1).
+  # types-protobuf tops at 7.34.1 (typeshed calendar versions lag the runtime by one minor);
+  # the broad `engenox.*` mypy override + ignore_missing_imports keeps the gate green across
+  # that gap, so `>=7.34,<8` (the 7.x line) is the right bound. `uv sync` provisions
+  # runtime+stubs; no manual install. If a stub gap surfaces in a generated import, NARROW
+  # the override (see pkg/contracts/pyproject) THEN re-evaluate the stub pin.
+  "types-protobuf>=7.34,<8",
 ]
