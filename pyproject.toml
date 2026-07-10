@@ -36,4 +36,68 @@ dev = [
   # runtime+stubs; no manual install. If a stub gap surfaces in a generated import, NARROW
   # the override (see pkg/contracts/pyproject) THEN re-evaluate the stub pin.
   "types-protobuf>=7.34,<8",
+  # import-linter — T03 the Python dependency-direction lint (24 §4). The measurement tier
+  # owns three internal package boundaries (estimator/conformal/federated, 24 §3); the arrow
+  # is unidirectional + libs never import a service. The contracts below LOAD + are valid at
+  # M0 (the T03 acceptance) — they fire against the T12 implementation the moment the
+  # packages exist. `lint-imports` is the CLI. Cites: 24 §4 + §3; T03; T12.
+  "import-linter>=2.13",
 ]
+
+# import-linter config — T03 the Python dependency-direction lint (24 §4).
+#
+# How import-linter resolves `forbidden` contracts (read in the installed source,
+# contracts/forbidden.py): a NON-EXISTENT *source* module is a hard ValueError (exit 1).
+# A non-existent *forbidden* module is SKIPPED ("such pairs are skipped", forbidden.py:46).
+# So at M0 — where ONLY the `engenox` contracts packages exist (entity/event/service/policy
+# from pkg/contracts; the measurement/libs/services packages land at T11/T12/T15) — the ONE
+# contract that is LIVE on real code today is the entity-leaf-from-service invariant (the
+# service proto imports the entity proto, NEVER the reverse — the contract-graph arrow
+# unidirectional, 24 §4). It uses EXISTING source + forbidden packages, so `lint-imports`
+# PASSES today by ENFORCING a real boundary, not by passing vacuously with nothing to check
+# (the ticket said "lint-imports passes on the empty module"; this does better — it passes by
+# proving the lint is live on shipping code, CLAUDE.md §12 the candor floor).
+#
+# The measurement-internal boundaries (estimator/conformal/federated, 24 §3) + the
+# libs-import-no-service invariant are deferred to T12/T15: their packages do not exist at
+# M0, so a `forbidden` contract with them as a SOURCE would hard-fail (the opposite of green).
+# The deferral is recorded inline below as TODO(T12)/TODO(T15) with the exact contracts — so
+# T12/T15 author them by uncommenting when the packages are importable. The boundary doc
+# (docs/enforcement/dependency-rules.md) holds the spec today.
+#
+# Cites: 24 §4 (the dependency-direction lint) + §3 (the boundary table); T03; T12; T15.
+[tool.importlinter]
+# root_packages is the IMPORTABLE namespace (not the distribution name). pkg/contracts
+# installs as the `engenox` namespace (package-dir = generated/python; `uv sync` editable-
+# installs it). T12/T15 add measurement/libs under the same `engenox.*` namespace.
+root_packages = ["engenox"]
+
+# THE live M0 contract — entity is the leaf contract type; service imports entity, the
+# reverse arrow is the forbidden contract-graph breach (24 §4). Verifiable on the shipping
+# generated Python today (entity_pb2 imports only google.protobuf; service_pb2 imports
+# entity). PASSES → the lint is live, not vacuous.
+[[tool.importlinter.contracts]]
+name = "entity-leaf-from-service"
+type = "forbidden"
+source_modules = ["engenox.entity.v1"]
+forbidden_modules = ["engenox.service.v1"]
+doc-url = "docs/enforcement/dependency-rules.md"
+
+# TODO(T12): uncomment when engenox.measurement.{estimator,conformal,federated} are
+# importable. The measurement tier's internal arrow is unidirectional: conformal + federated
+# sit ON TOP of estimator; estimator imports neither (the spine package depends down).
+# [[tool.importlinter.contracts]]
+# name = "measurement-package-boundary"
+# type = "forbidden"
+# source_modules = ["engenox.measurement.conformal", "engenox.measurement.federated"]
+# forbidden_modules = ["engenox.measurement.estimator"]
+# doc-url = "docs/enforcement/dependency-rules.md"
+
+# TODO(T15): uncomment when engenox.libs + engenox.services are importable. libs sit BELOW
+# the service layer — a lib depends on contracts + stdlib, never on a producer service.
+# [[tool.importlinter.contracts]]
+# name = "libs-import-no-service"
+# type = "forbidden"
+# source_modules = ["engenox.libs"]
+# forbidden_modules = ["engenox.services"]
+# doc-url = "docs/enforcement/dependency-rules.md"

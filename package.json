@@ -4,7 +4,16 @@
   "private": true,
   "description": "Engenox — the AI Visibility Operating System. Workspace root. Read CLAUDE.md first.",
   "//": "T01 ships the build-orchestrator holder only — no per-service package.json (those land at T02 / T10–T14). nx is the audited monorepo orchestrator (29 §6; ADR-0001). The pnpm version is NOT pinned here — mise.toml is the single source of the toolchain (29 §6).",
+  "//scripts": "T03 wires the dependency-direction lint suite here; T06 wires these into CI. The boundary checks shell out via the OS-appropriate twin (.sh + .ps1 run the same logic). Run under `mise exec` (CI activates mise) so the toolchain resolves. Cites: 24 §4; T03.",
+  "scripts": {
+    "lint:boundary": "dependency-cruise -c .dependency-cruiser.cjs --output-type err pkg/contracts services libs web && bash tools/check-contract-graph.sh && bash tools/check-no-utils.sh && bash tools/check-lint-fires.sh",
+    "lint:boundary:win": "dependency-cruise -c .dependency-cruiser.cjs --output-type err pkg/contracts services libs web && powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/check-contract-graph.ps1 && powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/check-no-utils.ps1",
+    "lint:py": "uv run lint-imports",
+    "lint:go": "golangci-lint run --config .golangci.yaml ./pkg/contracts/...",
+    "lint": "pnpm lint:boundary && pnpm lint:py && pnpm lint:go"
+  },
   "devDependencies": {
+    "dependency-cruiser": "^18.0.0",
     "nx": "23.0.1"
   }
 }

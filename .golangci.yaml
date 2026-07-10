@@ -1,0 +1,101 @@
+# .golangci.yaml — T03 the Go dependency-direction lint (golangci-lint v2, depguard) (24 §4).
+#
+# v2 form (the pinned golangci-lint is v2, mise.toml `golangci-lint = "2"`): depguard is
+# configured CENTRALLY in this file with per-source `files:` rules, NOT as one
+# .depguard.yml per service dir (that was the depguard 1.x pattern). The boundary table is
+# the same; the carrier moved with the v2 pin. The pnpm-lock/mise pin is the reproducibility
+# floor (CLAUDE.md §6 deps pinned) — a golangci-lint bump is a category-1 watchdog hit.
+#
+# Go-module path convention (established here, finalized at T11): each Go service is its OWN
+# module rooted at `github.com/engenox/<service>` — mirroring pkg/contracts'
+# `github.com/engenox/contracts` (24 §6). A cross-service import is `github.com/engenox/
+# <other-service>/...` and is depguard-banned from every service that is not its own. The
+# libs Go modules (`github.com/engenox/kg`, `.../cedar`, `.../crypto`, `.../otel`,
+# `.../verifier`) ARE allowed imports (24 §3: services -> libs/{kg,verifier,cedar,crypto,
+# otel}). contracts is allowed for every service (the fan-IN root). At M0 no Go service
+# modules exist yet (T11 lands the first), so the `files:` rules match nothing + `golangci-
+# lint run` is green on the sole M0 Go module (pkg/contracts). The depguard rules LOAD + are
+# valid (the T03 acceptance); the cross-service arrow fires against the T06 CI fixture.
+#
+# Cites: 24 §4 (the dependency-direction lint) + §3 (the boundary table); 22 §3 (Go
+#        fmt.Errorf("%w", err); explicit error returns); 29 §6 (golangci-lint v2 + depguard);
+#        ADR-0001 (the Go stack pin); T03; T11 (the first Go service + module-path finalization).
+
+version: "2"
+
+run:
+  timeout: 5m
+  go: "1.24"
+
+linters:
+  # Opt-in wielset: only the enabled linters run. The stack-drift watchdog (CLAUDE.md §8)
+  # would block a forbidden linter; this set is the vetting floor for Go (22 §3, 29 §6).
+  default: none
+  enable:
+    - errcheck      # every returned error is handled (22 §3 — no swallowed errors)
+    - govet         # the standard go vet checks (copylocks, etc. — 22 §3 go vet copylocks)
+    - ineffassign
+    - staticcheck   # the SA suite (the catch-all correctness+style lint)
+    - unused
+    - gocritic      # the committed-opinion style + simplification checks (22 §6 match-the-style)
+    - revive        # the configurable Go style linter (naming, exported-comment, etc.)
+    - depguard      # THE dependency-direction lint (24 §4) — the arrows enforced, not advisory
+
+  settings:
+    # depguard per-service rules (24 §3). `files:` is a file-path regex the rule applies to;
+    # `deny:` blocks a listed import path PREFIX; the README points a blocked importer at the
+    # section. The `all` rule is the universal Go layering: no Go service imports another
+    # service's internals — the leaf-only + fan-IN contract holds for Go as for TS.
+    depguard:
+      rules:
+        # The universal cross-service ban: from within ANY service's own module, importing
+        # ANOTHER service's module root is forbidden. (Same-service imports are
+        # intra-module and not in scope.) At M0 there are no service modules; this rule is
+        # loaded + ready for T11/T10 — it matches the moment a service package exists.
+        no-cross-service-go:
+          files:
+            - "^services/([^/]+)/"
+          deny:
+            - pkg: "github.com/engenox/perception"
+              desc: "24 §3 — services reach another service ONLY via the contract gRPC client (github.com/engenox/contracts), never its module."
+            - pkg: "github.com/engenox/decision"
+              desc: "24 §3 — services reach another service ONLY via the contract gRPC client, never its module."
+            - pkg: "github.com/engenox/action"
+              desc: "24 §3 — services reach another service ONLY via the contract gRPC client, never its module."
+            - pkg: "github.com/engenox/measurement"
+              desc: "24 §3 — services reach another service ONLY via the contract gRPC client, never its module."
+            - pkg: "github.com/engenox/gateway"
+              desc: "24 §3 — gateway is leaf-only; no service imports gateway internals."
+            - pkg: "github.com/engenox/control-plane"
+              desc: "24 §3 — control-plane is the orchestrator called by the edge, not imported by siblings."
+
+        # perception's allowed fan (24 §3): contracts + the libs perception may lean on.
+        # (explicit allow-list is belt-and-suspenders over the deny-list above.)
+        perception-allowed:
+          files:
+            - "^services/perception/"
+          deny:
+            - pkg: "github.com/engenox/perception"
+              desc: "a Go service does not import its own module path from within itself"
+
+        # action's allowed fan (24 §3): contracts + kg + cedar + crypto — action is the
+        # commit/policy-evaluated spine, so it leans on the cedar + crypto + kg libs.
+        action-allowed:
+          files:
+            - "^services/action/"
+          deny:
+            - pkg: "github.com/engenox/action"
+              desc: "a Go service does not import its own module path from within itself"
+
+  exclusions:
+    # The generated protobuf packages + grpc stubs are codegen; lint-free over them (the
+    # generated/* tree is also git-ignored — produced at gen time, 24 §6).
+    paths:
+      - "pkg/contracts/generated/go/.*pb\\.go$"
+      - "pkg/contracts/generated/go/.*_grpc\\.pb\\.go$"
+      - "third_party/"
+      - "testdata/"
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

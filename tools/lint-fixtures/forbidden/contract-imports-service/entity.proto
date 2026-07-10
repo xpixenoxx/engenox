@@ -1,0 +1,13 @@
+// DELIBERATELY FORBIDDEN FIXTURE — do not import, do not fix.
+// A contract proto importing a service proto — the forbidden contract-spine leaf breach
+// (24 §2 + CLAUDE.md §4). pkg/contracts is the fan-IN root; it imports nothing in
+// services/libs/web. This trips tools/check-contract-graph (the structural backstop, vs
+// dependency-cruiser which catches a service importing another service).
+syntax = "proto3";
+package engenox.fixtures.forbidden.v1;
+
+import "services/decision/plan.proto";
+
+message ForbidContractImportsService {
+  string id = 1;
+}
