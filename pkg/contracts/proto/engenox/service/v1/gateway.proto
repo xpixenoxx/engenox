@@ -1,0 +1,320 @@
+// gateway.proto - the GatewayService gRPC contract: the six bounded LLM seams as
+// stateless, schema-constrained functions (11 §3), the ONLY model-touching surface
+// (11 §2 + CLAUDE.md §5 - gateway is leaf-only; no service calls a provider directly).
+//
+// The gateway owns routing + constrained decoding + re-grounding + cost control +
+// tracing (11 §2). It is the single ingress for every LLM call across every backend
+// service (11 §2; the provider/LiteLLM SDK lives in services/gateway/ and nowhere else,
+// CLAUDE.md §5). The six seams (11 §3) are: Extract, Draft, Adjudicate, Embed, Abduce,
+// Critique. Each is a stateless function `input -> constrained output`; no seam holds a
+// conversation (11 §3). Every output is re-grounded by the verifier (11 §2c) before the
+// CALLER (the control-plane, via libs/verifier) lets it touch a spine.
+//
+// The cross-family Critic invariant (11 §4): the Critic's model family MUST differ from
+// the Planner's. CritiqueRequest carries planner_family so the gateway routes the Critic
+// to a != family; a same-family Critique is a watchdog hit (CLAUDE.md §8). The MVP Planner
+// is Claude (ADR-0006); the Critic is GPT-class - the property is preserved; the cadence
+// thins (ADR-0007 M2-thin).
+//
+// tenant_id defense (CLAUDE.md §8): the gateway is a SERVER-TO-SERVER call - the
+// control-plane (the trusted edge that validated the JWT) passes tenant_id, NOT the web
+// client. The gateway never trusts a web-client-supplied tenant_id; the control-plane
+// injects it from the validated session. Documented on each request, not silently
+// trusted.
+//
+// The seams return a seam_status: OK means the constrained output is grounded; FALLBACK
+// means the warm-canary symbolic path ran (the LLM was unavailable / out of budget / the
+// output failed re-grounding) - 11 §6, the candor floor (the caller degrades gracefully,
+// the UI shows "preliminary - the symbolic fallback ran"). This is NOT a silent failure
+// - the status is the candor, never redacted (26 §6).
+//
+// Strict-add-only v1 (14 §5). gateway -> entity + event + policy; service-package
+// service.v1. The contract-graph check (T03) asserts the leaf property: contracts import
+// only google/* or engenox/*.
+//
+// Cites: 11 §2 (the gateway's five responsibilities) + §3 (the six seams table) + §4
+//        (the cross-family Critic) + §6 (the warm-canary fallback); 06 §2.4 (the
+//        intervention vocabulary the Draft seam emits); 24 §3 + §4 (the cross-service
+//        shape + the gateway-leaf-only boundary); CLAUDE.md §5 + §8; ADR-0006; ADR-0007.
+
+syntax = "proto3";
+
+package engenox.service.v1;
+
+import "google/protobuf/timestamp.proto";
+// The entity vocabulary the seams operate over (06 §2) - the four entity sub-packages.
+// (gateway never imports the abstract entity.proto directly: it reaches AnswerEvent via
+// surface, BrandCard via brand, Intervention*/ConflictType via intervention/conflict. buf
+// IMPORT_USER drops the direct entity import + the unused policy import - ADR-0008.)
+import "engenox/entity/v1/surface.proto";
+import "engenox/entity/v1/brand.proto";
+import "engenox/entity/v1/conflict.proto";
+import "engenox/entity/v1/intervention.proto";
+// The event vocabulary (06 §5) - the typed Assertion the Extract seam emits onto the spine.
+import "engenox/event/v1/event.proto";
+
+option go_package = "github.com/engenox/contracts/generated/go/engenox/service/v1;servicev1";
+
+// The seam's outcome status - the candor-critical carrier. A seam returns OK when the
+// constrained LLM output is produced + grounded; FALLBACK when the warm-canary symbolic
+// path ran (11 §6). The status is NEVER omitted from the response - the caller + the UI
+// show "preliminary - the symbolic fallback ran" (19 §9, 26 §6). A seam that silently ran
+// the fallback is a candor-floor breach.
+enum SeamStatus {
+  SEAM_STATUS_UNSPECIFIED = 0;
+  // The constrained output was produced by the LLM and re-grounding passed (11 §2c).
+  SEAM_STATUS_OK = 1;
+  // The warm-canary symbolic fallback ran (11 §6) - LLM unavailable / budget exhausted /
+  // re-grounding failed within the bounded re-attempt. The output is the symbolic
+  // rules + the causal-scorer path; the caller degrades gracefully.
+  SEAM_STATUS_FALLBACK = 2;
+  // The bounded re-attempt (<=2) exhausted + the output could not be grounded. The
+  // caller treats the seam as a null + degrades to the symbolic path with candor
+  // microcopy (11 §2c: "we couldn't ground this claim - we won't show it").
+  SEAM_STATUS_REJECTED = 3;
+  reserved 4 to 999;
+}
+
+// The LLM model family - used for the cross-family Critic invariant (11 §4). The gateway
+// routes the Critic to a family != the Planner's. (Planner = ANTHROPIC in the MVP,
+// ADR-0006; the Critic is OPENAI or GOOGLE.)
+enum ModelFamily {
+  MODEL_FAMILY_UNSPECIFIED = 0;
+  MODEL_FAMILY_ANTHROPIC = 1;
+  MODEL_FAMILY_OPENAI = 2;
+  MODEL_FAMILY_GOOGLE = 3;
+  reserved 4 to 999;
+}
+
+// The shared seam metadata returned on every seam response - the candor floor for the
+// gateway layer. model_id + prompt_version render on the Provenance Audit Hover (19 §3 +
+// 10 §6); grounded? is the verifier verdict; cost_tokens feeds the per-tenant budget gate
+// (11 §2d); status is the seam outcome (candor, never redacted).
+message SeamMeta {
+  // The seam status (the candor-critical carrier).
+  SeamStatus status = 1;
+  // The model id that ran, e.g. "claude-haiku-4-5@extract.v3" (06 §2.5 extracted_by).
+  // Stored verbatim - the candor floor (26 §6 - never redact the model_id the hover needs).
+  string model_id = 2;
+  // The model family that ran (for the cross-family Critic hover, 19 §3 Panel 5).
+  ModelFamily family = 3;
+  // The prompt version (06 §2.5) for replayable extraction.
+  string prompt_version = 4;
+  // True when the verifier re-grounded the output (11 §2c). False on FALLBACK.
+  bool grounded = 5;
+  // The token cost this seam consumed (11 §2d - the per-tenant budget gate).
+  uint32 cost_tokens = 6;
+  // A trace_id linking the gateway span to the Temporal workflow span (11 §2e + OTel).
+  string trace_id = 7;
+  // When the seam ran.
+  google.protobuf.Timestamp ran_at = 8;
+}
+
+// =============================================================================
+// Seam 1 - Extract (11 §3). Output drawn only from the tenant's SHACL shapes
+// (grammar-injected); every field dereferences to a KG node (06 §2.2). The
+// highest-volume seam (ADR-0007 M2-thin: constrained decoding on Extract first).
+// =============================================================================
+
+message ExtractRequest {
+  // The tenant - injected by the control-plane from the validated JWT (CLAUDE.md §8). NEVER
+  // trusted from the web client.
+  string tenant_id = 1;
+  // The probe answer to Extract typed assertions from (06 §2.2 AnswerEvent).
+  engenox.entity.v1.AnswerEvent answer = 2;
+  // The tenant's entity vocabulary snapshot the grammar is built from (the living entity
+  // set per cycle, 11 §2b). The Extract output can only reference entities in this set.
+  repeated string known_entity_ids = 3;
+  // The idempotency key (CLAUDE.md §8 - a mutation without one is a watchdog hit; the
+  // Extract result is written to the spine, so it is a mutation).
+  string idempotency_key = 4;
+}
+
+message ExtractResponse {
+  // The typed assertions Extracted from the answer (06 §5 step 2 - the brand/competitor
+  // entity mentions). Each subject_id/object dereferences to a known_entity_id (11 §2c).
+  repeated engenox.event.v1.Assertion assertions = 1;
+  // The mentions the Extractor resolved (06 §2.2 - for the SurfaceAssertion aggregation).
+  repeated engenox.entity.v1.MentionRef mentions = 2;
+  SeamMeta meta = 3;
+}
+
+// =============================================================================
+// Seam 2 - Draft (11 §3). May cite only existing KG/trajectory node pointers; prose
+// verifier re-parses (11 §2c). Generates the schema.org JSON-LD (06 §2.4, 04 §3 F6) +
+// the content briefs (04 §3 F7). NOT autonomous content (04 §4 - a documented non-goal).
+// =============================================================================
+
+message DraftRequest {
+  string tenant_id = 1;
+  // The Brand Card the draft is grounded in (06 §2.1 + 04 §3 F4 -> F6).
+  engenox.entity.v1.BrandCard brand_card = 2;
+  // The intervention type the draft generates the artifact for (06 §2.4).
+  engenox.entity.v1.InterventionType intervention_type = 3;
+  // The entities the surfaces failed to resolve (04 §3 F6 - schema for the EXACT entities
+  // the surfaces are failing on) + the conflict the draft targets.
+  repeated string gap_entity_ids = 4;
+  string targets_conflict_id = 5;
+  // The target surface + query the draft is intended to win (06 §2.4).
+  engenox.entity.v1.Surface target_surface = 6;
+  string target_query = 7;
+  string idempotency_key = 8;
+}
+
+message DraftResponse {
+  // The artifact: schema_json_ld OR content_brief OR brand_card_field (06 §2.4). The
+  // verifier re-grounds every claim before the control-plane lets it touch the spine.
+  engenox.entity.v1.InterventionParams params = 1;
+  // The model_id + the schema.org validation verdict (validated against schema.org + the
+  // probe gaps, 04 §3 F6). False on FALLBACK.
+  bool schema_validated = 2;
+  SeamMeta meta = 3;
+}
+
+// =============================================================================
+// Seam 3 - Adjudicate (11 §3). Constrained choice among the ConflictType classes the
+// symbolic Reconciler already enumerated (06 §2.3 + 06 §5 step 4). Never free-generates
+// a class.
+// =============================================================================
+
+message AdjudicateRequest {
+  string tenant_id = 1;
+  // The Brand-Truth node the surface disagrees with (06 §2.3 brand_truth_node_id).
+  string brand_truth_node_id = 2;
+  // The perception assertion the surface made (06 §2.3 surface_assertion_id).
+  string surface_assertion_id = 3;
+  // The candidate ConflictTypes the Reconciler enumerated (06 §2.3); the Adjudicate seam
+  // picks among these ONLY.
+  repeated engenox.entity.v1.ConflictType candidate_types = 4;
+  string idempotency_key = 5;
+}
+
+message AdjudicateResponse {
+  // The adjudicated conflict type (06 §2.3) - picked from candidate_types only.
+  engenox.entity.v1.ConflictType conflict_type = 1;
+  // The severity, 0..1 (06 §2.3); gated by the estimator, never inflated.
+  double severity = 2;
+  // The one-paragraph candor explainer (04 §3 F5 / 19 §3 Panel 3).
+  string explainer = 3;
+  SeamMeta meta = 4;
+}
+
+// =============================================================================
+// Seam 4 - Embed (11 §3). Cohere/bge; vectors into pgvector (DEFERRED at MVP, ADR-0007
+// M1-thin defers AGE/pgvector). The signature is present (ADR-0007: the six seam
+// signatures); the thin adapter returns FALLBACK with the feature deferred-honestly.
+// =============================================================================
+
+message EmbedRequest {
+  string tenant_id = 1;
+  repeated string texts = 2;
+  string idempotency_key = 3;
+}
+
+message EmbedResponse {
+  // The vectors (DEFERRED at the MVP - the thin adapter returns empty + FALLBACK). The
+  // signature is present so the Embed seam plugs in without a contract change at the
+  // thicken pass.
+  repeated string vector_refs = 1;
+  SeamMeta meta = 2;
+}
+
+// =============================================================================
+// Seam 5 - Abduce (11 §3). Falsifiable hypotheses; each must reference existing
+// conflicts (06 §5 step 5 + 11 §2c). DEFERRED real traffic at the MVP (the Abduce seam
+// is the highest-stakes cycle, 26); the signature + the FALLBACK are present.
+// =============================================================================
+
+message FalsifiableHypothesis {
+  string hypothesis = 1;
+  // The KnowledgeConflict back-pointer (11 §2c - a hypothesis with no back-pointer is rejected).
+  string references_conflict_id = 2;
+  // The falsification test (what would prove the hypothesis wrong, 06 §5 step 5).
+  string falsification_test = 3;
+}
+
+message AbduceRequest {
+  string tenant_id = 1;
+  // The conflicts to hypothesize about (06 §2.3).
+  repeated string conflict_ids = 2;
+  string idempotency_key = 3;
+}
+
+message AbduceResponse {
+  repeated FalsifiableHypothesis hypotheses = 1;
+  SeamMeta meta = 2;
+}
+
+// =============================================================================
+// Seam 6 - Critique (11 §3). Cross-family from the Planner's family; may VETO or
+// DEMAND-REPLAN (11 §4). The Critic's surviving objections render on Panel 5 (19 §3).
+// =============================================================================
+
+// The Critic's verdict (11 §3 + 11 §4).
+enum CriticVerdict {
+  CRITIC_VERDICT_UNSPECIFIED = 0;
+  // ACCEPT with reservations - the plan survives; the reservations render on Panel 5.
+  CRITIC_VERDICT_ACCEPT_WITH_RESERVATIONS = 1;
+  // DEMAND-REPLAN survived - a redraft with a specific objection (11 §4).
+  CRITIC_VERDICT_DEMAND_REPLAN = 2;
+  // VETO overturned - refuse the plan; the Planner redrafts or escalates (11 §4).
+  CRITIC_VERDICT_VETO = 3;
+  reserved 4 to 999;
+}
+
+// A surviving objection the Critic raised (11 §4 - the counterfactuals considered). Each
+// renders on Panel 5 (19 §3): Perturbation -> Estimator impact -> Symptom.
+message CriticObjection {
+  // The perturbation the Critic drew from the SCM (11 §4 - "what if Bing reindexes mid-window?").
+  string perturbation = 1;
+  // The estimator impact under the perturbation (11 §4).
+  string estimator_impact = 2;
+  // The symptom the customer would see (11 §4 + 19 §3 Panel 5).
+  string symptom = 3;
+}
+
+message CritiqueRequest {
+  string tenant_id = 1;
+  // The intervention the Critic attacks (06 §2.4 + 11 §4).
+  engenox.entity.v1.Intervention intervention = 2;
+  // The Planner's family - the gateway routes the Critic to a != family (11 §4, the
+  // cross-family invariant). A same-family Critique is a watchdog hit (CLAUDE.md §8).
+  ModelFamily planner_family = 3;
+  string idempotency_key = 4;
+}
+
+message CritiqueResponse {
+  // The verdict (11 §4). VETO/DEMAND-REPLAN force a redraft; escalation on deadlock goes
+  // to a HUMAN, never an LLM tiebreaker (11 §4, 26 §6).
+  CriticVerdict verdict = 1;
+  // The surviving objections (Panel 5, 19 §3). Empty on ACCEPT with no reservations.
+  repeated CriticObjection objections = 2;
+  // The Critic's model family - renders on Panel 5 ("Critic: GPT-5 != Planner: Claude",
+  // 19 §3 Panel 5) - the cross-family discipline made visible.
+  ModelFamily critic_family = 3;
+  // Human-readable summary of the verdict for the PR preview (19 §6).
+  string summary = 4;
+  SeamMeta meta = 5;
+}
+
+// =============================================================================
+// The GatewayService - the six bounded seams as stateless gRPC RPCs (11 §3, 24 §3).
+// The control-plane calls these via the generated gRPC client (24 §4 - never a direct
+// internal-package import to services/gateway/, enforced by gateway-leaf-only, T03).
+// =============================================================================
+
+service GatewayService {
+  // Extract typed assertions from a probe answer (11 §3 seam 1). Constrained on the
+  // tenant's SHACL shapes; re-grounded before the spine (11 §2c).
+  rpc Extract(ExtractRequest) returns (ExtractResponse);
+  // Draft the schema.org JSON-LD / content brief / brand-card edit (11 §3 seam 2, 04 F6/F7).
+  rpc Draft(DraftRequest) returns (DraftResponse);
+  // Adjudicate a conflict - constrained choice among the enumerated ConflictTypes (11 §3 seam 3).
+  rpc Adjudicate(AdjudicateRequest) returns (AdjudicateResponse);
+  // Embed texts - DEFERRED at the MVP (signature present; ADR-0007 M1-thin defers pgvector).
+  rpc Embed(EmbedRequest) returns (EmbedResponse);
+  // Abduce falsifiable hypotheses - DEFERRED real traffic at the MVP (11 §3 seam 5).
+  rpc Abduce(AbduceRequest) returns (AbduceResponse);
+  // Critique an intervention - cross-family from the Planner (11 §3 seam 6 + §4).
+  rpc Critique(CritiqueRequest) returns (CritiqueResponse);
+}

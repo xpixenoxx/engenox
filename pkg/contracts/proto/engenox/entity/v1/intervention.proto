@@ -1,0 +1,246 @@
+// intervention.proto - the action-spine vocabulary: the Intervention, the signed
+// ActionRecord, the integrity-tagged Outcome, the LiftDistribution, and the
+// CounterfactualCondition (06 §2.4).
+//
+// This is the ACTION half of the closed loop - what the loop proposes, what it commits
+// (typed, signed, auditable), and what it measured. The candor-critical invariants live
+// here: (a) every LiftDistribution carries its CI (the honesty floor - a lift WITHOUT a
+// CI is a watchdog hit, CLAUDE.md §8); (b) every Intervention carries an
+// idempotency_key (CLAUDE.md §8 - a mutation without one is a watchdog hit); (c) every
+// ActionRecord carries a signed_manifest with the rollback-hash + the allow-list-glob
+// (06 §2.4 + F8); (d) every Outcome carries the integrity tags (identification_strategy
+// + foreign_change_status, 06 §2.4) that gate the estimator - the corpus's causal
+// honesty, not optional metadata.
+//
+// The autonomy_level is the policy.v1.DialLevel (12 §4) - the MVP is PROPOSE only
+// (Co-pilot, 26). The blast_radius is the policy.v1.BlastRadiusBand (12 §3) - the Cedar
+// two-pass gate evaluates (dial_level, blast_radius) -> permitted|denied (12 §4).
+//
+// Strict-add-only v1 (14 §5). intervention -> entity + surface + event + policy.
+//
+// Cites: 06 §2.4 (Intervention & Outcome); 12 §3-5 (blast-radius + the dial + earned
+//        escalation); 26 §4 (the candor-preservation rules); 19 §3 Panels 4 + 6 (corpus
+//        precedents + the contrarian block); 24 §2; ADR-0001 + ADR-0006.
+
+syntax = "proto3";
+
+package engenox.entity.v1;
+
+import "google/protobuf/timestamp.proto";
+import "engenox/entity/v1/entity.proto";
+// The AI-surface vocabulary + the cross-cutting Surface/QueryIntent enums (06 §2.2).
+import "engenox/entity/v1/surface.proto";
+// The policy vocabulary - BlastRadiusBand + DialLevel (12 §3-4) the Cedar gate evaluates.
+import "engenox/policy/v1/policy.proto";
+// The integrity-tag vocabulary (06 §2.4) - the entity/outcome canonical home (ADR-0008);
+// event -> entity stays the single direction; entity.v1 never imports event.v1.
+import "engenox/entity/v1/integrity.proto";
+
+option go_package = "github.com/engenox/contracts/generated/go/engenox/entity/v1;entityv1";
+
+// The LiftDistribution (06 §2.4) - the candor-critical type: a lift is ALWAYS (point, CI).
+// The integrity tag (identification_strategy) gates the estimator's weight on the row
+// (06 §2.4); `preliminary` carries the candor microcopy "calibration in flight; the CI
+// is wider than nominal" (26 §4) until the AI-Intelligence closure passes. A lift
+// WITHOUT ci_low/ci_high is a watchdog hit (CLAUDE.md §8 - lift rendered without its CI).
+message LiftDistribution {
+  // The point estimate (the headline +6%, 19 §4a). The dashboard tile shows only this.
+  double point_estimate = 1;
+  // The lower CI bound (the candor floor; 19 §4c the Honesty expandable).
+  double ci_low = 2;
+  // The upper CI bound (the candor floor).
+  double ci_high = 3;
+  // The sample count the estimate summarizes (06 §2.2 "over N samples").
+  uint32 sample_count = 4;
+  // How the row was identified (06 §2.4); gates the estimator weight (the corpus's
+  // causal honesty). RCT-eligible rows pull hardest; observational rows are down-weighted.
+  engenox.entity.v1.IdentificationStrategy identification_strategy = 5;
+  // True until the AI-Intelligence closure's production half passes (P2.1, 26 §4). The UI
+  // renders "preliminary - calibration in flight" (19 §12) - the candor, not the overpromise.
+  bool preliminary = 6;
+  // When the lift is expected/realized (06 §2.4 realization_date); for a predicted
+  // uplift this is the measurement-window close, for an Outcome this is the measured date.
+  google.protobuf.Timestamp realization_date = 7;
+}
+
+// The intervention action taxonomy (06 §2.4 intervention_type). The MVP subset: add
+// schema, add a content brief, fix a Brand Card field. ClaimRestoration is reserved
+// (the M1+ expansion).
+enum InterventionType {
+  INTERVENTION_TYPE_UNSPECIFIED = 0;
+  // Generate validated schema.org JSON-LD for the entities the surfaces failed to
+  // resolve (04 §3 F6). The PR carries the JSON-LD hunk.
+  INTERVENTION_TYPE_ADD_SCHEMA_ELEMENT = 1;
+  // A short schema-grounded content brief for a content-only gap schema can't close (04
+  // §3 F7). NOT autonomous content - the brand writes the content; we open the brief PR.
+  INTERVENTION_TYPE_ADD_CONTENT_BRIEF = 2;
+  // Edit a Brand Card field that the surface contradicts (04 §3 F4 -> 06 §2.4).
+  INTERVENTION_TYPE_FIX_BRAND_CARD_FIELD = 3;
+  reserved 4 to 999;
+}
+
+// The ActionRecord status lifecycle (06 §2.4 ActionRecord.status): candidate -> scored ->
+// proposed -> approved -> executed -> merged -> measurement-window-open -> measured ->
+// counterfactual-estimated -> recorded. The MVP stops at `proposed` (the dial is
+// PROPOSE; the customer merges their own PR, 26 §6).
+enum ActionStatus {
+  ACTION_STATUS_UNSPECIFIED = 0;
+  ACTION_STATUS_CANDIDATE = 1;
+  ACTION_STATUS_SCORED = 2;
+  ACTION_STATUS_PROPOSED = 3;
+  ACTION_STATUS_APPROVED = 4;
+  ACTION_STATUS_EXECUTED = 5;
+  ACTION_STATUS_MERGED = 6;
+  ACTION_STATUS_MEASUREMENT_WINDOW_OPEN = 7;
+  ACTION_STATUS_MEASURED = 8;
+  ACTION_STATUS_COUNTERFACTUAL_ESTIMATED = 9;
+  ACTION_STATUS_RECORDED = 10;
+  reserved 11 to 999;
+}
+
+// How reversible an intervention is (06 §2.4 reversibility). Drives the rollback-hash.
+enum Reversibility {
+  REVERSIBILITY_UNSPECIFIED = 0;
+  REVERSIBILITY_GIT_REVERT = 1;    // a PR hunk - reverted by a merge-revert PR
+  REVERSIBILITY_CONTENT_EDIT = 2;   // a content brief - reverted by a follow-up edit
+  REVERSIBILITY_SCHEMA_EDIT = 3;   // a schema element - reverted by removing the JSON-LD
+}
+
+// The params for FIX_BRAND_CARD_FIELD (06 §2.4 Intervention.params). Concrete old->new
+// so the PR diff hunk + the signed manifest are reproducible.
+message BrandCardFieldEdit {
+  string entity_id = 1;
+  string field = 2;       // the Brand Card field path (e.g. "organization.category")
+  string old_value = 3;
+  string new_value = 4;
+}
+
+// The intervention payload (06 §2.4 Intervention.params) - the artifact the Draft seam
+// generates. oneof mirrors the InterventionType: schema -> json-ld string; brief ->
+// brief string; brand-card-field -> the typed edit. NOT autonomous content - the Brand
+// writes the content (04 §4, a documented non-goal).
+message InterventionParams {
+  oneof params {
+    // The validated schema.org JSON-LD document (04 §3 F6, 11 §3 Draft constrained).
+    string schema_json_ld = 1;
+    // The schema-grounded content brief (04 §3 F7).
+    string content_brief = 2;
+    // A Brand Card field edit (06 §2.4).
+    BrandCardFieldEdit brand_card_field = 3;
+  }
+}
+
+// The signed manifest carried by every PR (06 §2.4 signed_manifest + F8): who/what/why/
+// expected-uplift/CI/rollback-hash + the allow-list-glob (the non-overridable scope,
+// 15 §5e). The signature writes from day 1 (00 §2 invariant 8); the R2 Object-Lock WORM
+// mirror thickens later (ADR-0007 invariant 11).
+message ManifestRef {
+  // The human-readable manifest text embedded in the PR description (what changed, why,
+  // expected signal, next probe date).
+  string manifest_text = 1;
+  // The rollback hash (06 §2.4) - the git SHA a revert targets.
+  string rollback_hash = 2;
+  // The per-tenant allow-list glob (15 §5e) the diff was scoped to. Non-overridable; the
+  // deny-list chip renders on the PR preview (19 §6 / 20 §4 the Diff Preview pattern).
+  string allow_list_glob = 3;
+  // When the manifest was signed (06 §2.5 signed_at; 00 §2 invariant 8).
+  google.protobuf.Timestamp signed_at = 4;
+}
+
+// A typed action the loop proposes for the customer's infra (06 §2.4 Intervention). The
+// idempotency_key is the Temporal key (06 §2.4); a mutation without one is a watchdog
+// hit. The predicted_uplift is a LiftDistribution (CI always present). The
+// blast_radius_band is the Cedar second-pass input (12 §4). The MVP never proposes
+// above PROPOSE (the dial; 26), so the ActionRecord opens a PR the customer merges.
+message Intervention {
+  string id = 1;
+  string tenant_id = 2;
+  InterventionType intervention_type = 3;
+  // Which brand entity the intervention concerns (06 §2.4 target_entity_id).
+  string target_entity_id = 4;
+  // The surface the intervention is intended to lift on (null = all, 06 §2.4).
+  engenox.entity.v1.Surface target_surface = 5;
+  // The query the intervention is intended to win (06 §2.4 target_query).
+  string target_query = 6;
+  // The artifact (schema JSON-LD / brief / edit), 06 §2.4.
+  InterventionParams params = 7;
+  // The predicted uplift with its CI (06 §2.4 predicted_uplift: LiftDistribution). The
+  // candor floor: the PR preview shows the point + the CI (19 §6, 26 §6).
+  LiftDistribution predicted_uplift = 8;
+  // The Temporal idempotency key (06 §2.4); a mutation without one is a watchdog hit.
+  string idempotency_key = 9;
+  // The blast-radius band the Cedar second pass evaluates (12 §3-4).
+  engenox.policy.v1.BlastRadiusBand blast_radius = 10;
+  // The action status (06 §2.4). MVP: PROPOSED (the customer merges).
+  ActionStatus status = 11;
+  // The cross-family Critic's surviving verdict (06 §2.4 + 11 §4). The Critic's model
+  // family renders too (19 §3 Panel 5 - the cross-family discipline made visible).
+  string verdict = 12;
+  // The KnowledgeConflict this intervention targets (06 §2.4 -> 06 §2.3). Empty when
+  // the intervention is brand-card-driven, not conflict-driven.
+  string targets_conflict_id = 13;
+}
+
+// The commitment - typed, signed, auditable (06 §2.4 ActionRecord). The signed_manifest
+// + the pr_preview_diff render on the /interventions PR preview (19 §6); the
+// autonomy_level is the dial (PROPOSE in the MVP); the blast_radius + the deny-list
+// render as the structural-floor chips (19 §5d).
+message ActionRecord {
+  string id = 1;
+  string tenant_id = 2;
+  string intervention_id = 3;
+  engenox.policy.v1.BlastRadiusBand blast_radius = 4;
+  Reversibility reversibility = 5;
+  // The dial level the gate ran at (06 §2.4 + 12 §4). MVP: PROPOSE.
+  engenox.policy.v1.DialLevel autonomy_level = 6;
+  bool approval_required = 7;   // true at PROPOSE+ (the human merges)
+  string approved_by = 8;       // the human if execute-with-approval; empty at PROPOSE
+  ManifestRef signed_manifest = 9;
+  // The PR URL once opened (empty until the GitHub App lands the PR, F8).
+  string pr_url = 10;
+  // The diff hunk the PR preview renders (19 §6 / 20 §4 the Diff Preview pattern).
+  string pr_preview_diff = 11;
+  ActionStatus status = 12;
+}
+
+// A typed condition under which the forecast flips (06 §2.4 + 19 §3 Panel 6 the
+// contrarian block). NOT prose - the SCM-derived condition with its estimated probability
+// + the early-warning signal. Collapsible; expanded for the technical ICP (19 §3 Panel 6).
+// The contrarian block is NEVER omitted (the honesty floor, 26 §6).
+message CounterfactualCondition {
+  string condition_text = 1;
+  // The estimated probability the forecast flips under this condition (06 §2.4).
+  double probability = 2;
+  // The early-warning signal to watch (19 §7 - the EWMA/CUSUM residual the alert feeds on).
+  string early_warning_signal = 3;
+}
+
+// The measured result of an intervention (06 §2.4 Outcome). The causal pairing with the
+// Intervention; realized_lift is an integrity-tagged LiftDistribution. The coverage
+// diagnostic (contained/total) renders in the Honesty expandable (19 §4c). The
+// counterfactual_conditions are the contrarian block (Panel 6, 19 §4d). consent_flag
+// gates the row entering the corpus (06 §2.4).
+message Outcome {
+  string id = 1;
+  string tenant_id = 2;
+  string intervention_id = 3;
+  // The lagged measurement window (06 §2.4 measurement_window: Interval).
+  engenox.entity.v1.TimeInterval measurement_window = 4;
+  // The realized lift + its CI (06 §2.4 realized_lift: LiftDistribution). The candor
+  // floor: lifted with its CI, the coverage, and the contrarian block (19 §4).
+  LiftDistribution realized_lift = 5;
+  // The contrarian block (Panel 6, 19 §4d). Never omitted (26 §6).
+  repeated CounterfactualCondition counterfactual_conditions = 6;
+  // The coverage diagnostic of past intervals (19 §4c): "8 of last 10 intervals
+  // contained the realized lift". Renders in the Honesty expandable.
+  uint32 coverage_contained = 7;
+  uint32 coverage_total = 8;
+  // The consent flag (06 §2.4 consent_flag) - gates the row entering the corpus.
+  bool consent_flag = 9;
+  google.protobuf.Timestamp created_at = 10;
+  // The integrity tags (06 §2.4 - identification_strategy + foreign_change_status) that
+  // gate the row's weight on the causal estimator. The entity/outcome canonical home for
+  // the integrity vocabulary (ADR-0008); the same typed IntegrityTags the AssertionEvent
+  // envelope carries - one definition, no drift.
+  engenox.entity.v1.IntegrityTags integrity = 11;
+}

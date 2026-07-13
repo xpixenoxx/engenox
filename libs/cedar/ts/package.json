@@ -1,0 +1,26 @@
+{
+  "name": "@engenox/cedar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The two-pass Cedar policy gate + the dial ledger (12 §9; CLAUDE.md §2: Cedar, NOT OPA, for the dial gate; <2ms p99 is a CI test, 23 §3m). The DIAL candor invariants ride here: default `propose`; an escalation requires 3 axes (a watchdog hit if fewer, CLAUDE.md §8); demotion-on-alert; deadlock auto-demotion (26 §6). Runs the REAL Cedar runtime via @cedar-policy/cedar-wasm (the gate mechanism is NEVER thinned per the ADR-0007 Thinning Rule) — NOT a symbolic stub. The warm-eval p99 is the <2ms assertion; cold WASM init is amortized, not faked.",
+  "engines": { "node": ">=22" },
+  "exports": {
+    "./cedar": "./src/cedar.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cedar-policy/cedar-wasm": "^4.11.2",
+    "@engenox/contracts": "workspace:*",
+    "neverthrow": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

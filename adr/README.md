@@ -24,12 +24,13 @@
 | `0004` | AutoMQ as the bus graduation target, over WarpStream | Swap 3 (WarpStream now Confluent→IBM) | **PROPOSED** (ratify at the bus graduation trigger) | Phase-2 graduation |
 | `0005` | The verbatim-FTS tier is deferred; Postgres FTS for the MVP | Swap 4 (Quickwit now Datadog; re-evaluate at the corpus-search milestone) | **PROPOSED** (ratify at the corpus-search milestone) | Phase-2 |
 | `0006` | The 2026 cross-family model roster (the Critic + the seam assignments) | the model audit (`29` §4) | **PROPOSED** (ratify at M2) | M2 |
+| `0007` | Launch-first walking-skeleton execution ordering (thin-column-then-thicken) | execution-sequencing — **NOT a stack-audit swap**: supercedes the stage-complete-serial ordering of `28` §4 + the M0 README sequencing → thin-column-then-thicken; the 12 architectural invariants + the `25` §4 readiness-closure gate sequence + the `26` MVP scope are preserved unchanged | **ACCEPTED** | immediately (the M0→M9 execution ordering) |
 
-**ADR-0001 and ADR-0003 are ACCEPTED at Phase 0** because they bind to Phase-0 / M0 work: ADR-0001 is the audit record; ADR-0003 informs the cell template provision (`infra/tofu/modules/cell` must provision CNPG, not AlloyDB). ADR-0002/0004/0005/0006 are PROPOSED and ratify at their binding milestones — drafted now so the foundation docs reflect the resolved vendor-risk, executed when their milestone arrives.
+**ADR-0001 and ADR-0003 are ACCEPTED at Phase 0** because they bind to Phase-0 / M0 work: ADR-0001 is the audit record; ADR-0003 informs the cell template provision (`infra/tofu/modules/cell` must provision CNPG, not AlloyDB). ADR-0002/0004/0005/0006 are PROPOSED and ratify at their binding milestones — drafted now so the foundation docs reflect the resolved vendor-risk, executed when their milestone arrives. **ADR-0007 is ACCEPTED** — it is an execution-sequencing decision (NOT a stack-audit swap); it supercedes the stage-complete-serial ordering of `28` §4 + the M0 README sequencing in favor of thin-column-then-thicken, preserving every architectural invariant.
 
 ## The ADRs that will come later (milestone-bound, not yet drafted)
 
-- `adr/0007-…` and onward — the implementation-time decisions: the first Cedar policy binding, the first RLS policy template, the dial's three-axis ledger schema, the corpus WORM layout, the federated-substrate design, etc. These are drafted at their milestone, not pre-emptively.
+- `adr/0008-…` and onward — the implementation-time decisions: the first Cedar policy binding, the first RLS policy template, the dial's three-axis ledger schema, the corpus WORM layout, the federated-substrate design, etc. These are drafted at their milestone, not pre-emptively.
 - The `adr/` index grows monotonically; an ADR is never deleted (rejected/deprecated ones are kept for the record, with a Status line explaining why).
 
 ## The template

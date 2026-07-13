@@ -1,0 +1,86 @@
+// integrity.proto - the integrity-tag vocabulary (06 §2.4): IdentificationStrategy,
+// ForeignChangeStatus, IntegrityTags.
+//
+// These gate an outcome row's weight on the causal estimator (06 §2.4) - they are the
+// corpus's causal honesty, not optional metadata. RCT-eligible rows (the consented panel,
+// 13 §6) pull hardest; scraped/observational rows are down-weighted; a foreign-change bump
+// is never blamed on our intervention (12 §8). The estimator reads them on every batch
+// refit.
+//
+// WHY THIS FILE EXISTS (ADR-0008): the integrity vocabulary was first declared in
+// event.proto at T02 (commit 3de9b8d). That placement was harmless while nothing in
+// entity.v1 referenced it. A0's entity-layer LiftDistribution + Outcome (06 §2.4) DO
+// reference it - and an entity.v1 type cannot import a type from event.v1 while event.v1
+// already imports entity.v1 (the documented event -> entity arrow, see event.proto's own
+// comment): that is a package import cycle, which the proto compiler rejects. 06 §2.4
+// specifies these tags on the Outcome row - i.e. they belong to the entity/outcome domain,
+// not the bus envelope. This file is the architectural correction: the integrity vocabulary
+// moves to its canonical home in entity.v1, event.proto imports it here (event -> entity,
+// the single, already-documented direction stays), and the entity-layer Outcome / LiftDistribution
+// reference it in-package. Single typed definition across event + entity; no drift.
+//
+// Pre-M0 in-vitro correction (ADR-0008): zero generated consumers exist at this commit; no
+// service code, no published gencode, the contract-compat gate (T06) is not yet wired. The
+// fully-qualified names engenox.event.v1.{IdentificationStrategy,ForeignChangeStatus,
+// IntegrityTags} move to engenox.entity.v1.*; the move is recorded in ADR-0008 and is
+// reversible in git. When T06 lands, it runs --against a main already reflecting this move.
+//
+// Strict-add-only v1 (14 §5). integrity -> (nothing engenox); the leaf. event.v1 +
+// intervention.v1 (entity) both import this file.
+//
+// Cites: 06 §2.4 (IntegrityTags + the estimator-weight gate); 12 §8 (the foreign-change
+//        honesty discipline); 13 §6 (the consented panel); 14 §3 (the AssertionEvent
+//        envelope that carries tags); 24 §2 (the event -> entity direction); ADR-0008
+//        (the T02-placement correction). ADR-0001.
+
+syntax = "proto3";
+
+package engenox.entity.v1;
+
+// The Go import path (the contract package's Go module, 24 §6) - same package as
+// entity.proto, so the generated Go shares the entityv1 package name.
+option go_package = "github.com/engenox/contracts/generated/go/engenox/entity/v1;entityv1";
+
+// The identification strategy of an outcome row (06 §2.4). The highest weight in the
+// causal estimator goes to RCT-eligible rows (the consented panel, 13 §6); scraped /
+// observational rows are down-weighted. These tags gate the estimator weight (06 §2.4).
+enum IdentificationStrategy {
+  IDENTIFICATION_STRATEGY_UNSPECIFIED = 0;
+  // A consented-panel row (13 §6) - the highest estimator weight.
+  IDENTIFICATION_STRATEGY_RCT_ELIGIBLE = 1;
+  // A synthetic-control donor-basket row (06 §2.4).
+  IDENTIFICATION_STRATEGY_QUASI_EXPERIMENTAL = 2;
+  // A scraped/observational row (06 §2.4) - the lowest weight.
+  IDENTIFICATION_STRATEGY_OBSERVATIONAL = 3;
+  reserved 4 to 999;
+}
+
+// The foreign-change status of a measurement window (06 §2.4). The honesty estimator's
+// discipline (12 §8): a foreign surface bump is never blamed on our intervention.
+// PERIOD_INVALID quarantines the outcome (12 §8) - it does NOT count as regret, does NOT
+// auto-demote, does NOT feed the scorer.
+enum ForeignChangeStatus {
+  FOREIGN_CHANGE_STATUS_UNSPECIFIED = 0;
+  // No surface-level drift detected in the window (06 §2.4).
+  FOREIGN_CHANGE_STATUS_CLEAN = 1;
+  // Drift detected; the outcome is recorded but down-weighted (12 §8).
+  FOREIGN_CHANGE_STATUS_SUSPECTED_BUMP = 2;
+  // Confirmed platform shift; the lift is partialled out via the SCM's surface-dynamics
+  // model (12 §8).
+  FOREIGN_CHANGE_STATUS_CONFIRMED_BUMP = 3;
+  // Quarantined; the row does not feed the scorer (12 §8).
+  FOREIGN_CHANGE_STATUS_PERIOD_INVALID = 4;
+  reserved 5 to 999;
+}
+
+// The two integrity tags that gate an outcome row's weight on the causal estimator
+// (06 §2.4). These are load-bearing - they are the corpus's causal honesty, not optional
+// metadata (06 §2.4 commentary). The estimator reads them on every batch refit. Carried on
+// the AssertionEvent envelope (14 §3, event.proto) AND on the Outcome row (06 §2.4,
+// intervention.proto) - the same typed definition (ADR-0008), no drift.
+message IntegrityTags {
+  // How the row was identified (06 §2.4).
+  IdentificationStrategy identification_strategy = 1;
+  // Whether the measurement window was contaminated (06 §2.4).
+  ForeignChangeStatus foreign_change_status = 2;
+}

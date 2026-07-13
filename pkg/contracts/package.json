@@ -9,8 +9,14 @@
   },
   "exports": {
     "./entity/v1": "./generated/ts/engenox/entity/v1/entity_pb.ts",
+    "./entity/v1/surface": "./generated/ts/engenox/entity/v1/surface_pb.ts",
+    "./entity/v1/brand": "./generated/ts/engenox/entity/v1/brand_pb.ts",
+    "./entity/v1/conflict": "./generated/ts/engenox/entity/v1/conflict_pb.ts",
+    "./entity/v1/intervention": "./generated/ts/engenox/entity/v1/intervention_pb.ts",
+    "./entity/v1/integrity": "./generated/ts/engenox/entity/v1/integrity_pb.ts",
     "./event/v1": "./generated/ts/engenox/event/v1/event_pb.ts",
     "./service/v1": "./generated/ts/engenox/service/v1/service_pb.ts",
+    "./service/v1/gateway": "./generated/ts/engenox/service/v1/gateway_pb.ts",
     "./policy/v1": "./generated/ts/engenox/policy/v1/policy_pb.ts",
     "./package.json": "./package.json"
   },
@@ -23,8 +29,9 @@
     "test:py": "uv run python scripts/py-roundtrip.py"
   },
   "devDependencies": {
-    "@bufbuild/protoc-gen-es": "^2.5.0",
     "@bufbuild/protobuf": "^2.5.0",
+    "@bufbuild/protoc-gen-es": "^2.5.0",
+    "@types/node": "^26.1.1",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0"
   }

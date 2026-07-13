@@ -1,0 +1,26 @@
+{
+  "name": "@engenox/verifier",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The re-grounding checks — the candor gate the control-plane runs on every seam output BEFORE it touches the spine (11 §2c: the verifier re-grounds every claim). Pure functions: takes a seam response + the known ground truth + returns a typed Verdict (Grounded / Ungrounded + the reasons). An extracted assertion referencing a non-known entity is rejected; a drafted schema.org JSON-LD artifact that does not parse is rejected — the gateway's raw JSON is refined by the verifier at the system boundary (22 §3, the sanctioned `unknown` refinement), never trusted blind. NO I/O; NO service imports (24 §3: libs sit below the service layer).",
+  "engines": { "node": ">=22" },
+  "exports": {
+    "./verifier": "./src/verifier.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@engenox/contracts": "workspace:*",
+    "neverthrow": "^8.2.0"
+  },
+  "devDependencies": {
+    "@bufbuild/protobuf": "^2.5.0",
+    "@types/node": "^26.1.1",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

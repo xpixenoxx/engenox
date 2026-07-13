@@ -1,0 +1,144 @@
+// brand.proto - the Brand-Truth entity vocabulary (06 §2.1) - the brand-authored
+// source of truth.
+//
+// These are the declared facts the brand owns (06 §2.1): Organization, Product, Claim
+// (the differentiators), BuyerQuery (the queries the brand wants to win), and the
+// BrandCard that wraps them for the editable F4 surface. The Brand Card is the
+// customer's lever over their own visibility (04 §3 F4) + the seed of the Brand-Truth
+// spine; its edits carry ProvenanceSourceType.BRAND_CARD_EDIT (entity.proto) and are
+// bi-temporal + append-only via supersession (13 §4). The Brand Card DRIVES the
+// schema.org JSON-LD + the content briefs (06 §2.4 Intervention.params).
+//
+// Strict-add-only v1 (14 §5). brand -> surface (for the Surface enum in
+// BuyerQuery.target_surface) -> entity; no cycle.
+//
+// Cites: 06 §2.1 (Brand-Truth entities); 04 §3 F1 + F4 (onboarding + the Brand Card);
+//        19 §8 (the Brand Card editor); 24 §2; ADR-0001.
+
+syntax = "proto3";
+
+package engenox.entity.v1;
+
+import "google/protobuf/timestamp.proto";
+// Surface + QueryIntent live here (the cross-cutting enums - brand declares the surfaces
+// it wants to win). One-way: brand -> surface -> entity; brand references no entity.proto
+// type directly (buf IMPORT_USER drops the unused direct import - ADR-0008).
+import "engenox/entity/v1/surface.proto";
+
+option go_package = "github.com/engenox/contracts/generated/go/engenox/entity/v1;entityv1";
+
+// The minimal postal address (06 §2.1 Organization.hq_location: PostalAddress). Kept
+// small for the MVP - the schema.org PostalAddress the JSON-LD emits consumes these.
+message PostalAddress {
+  string street = 1;
+  string locality = 2;     // city
+  string region = 3;        // state / province
+  string postal_code = 4;
+  string country = 5;      // ISO-3166 alpha-2
+}
+
+// An atomic, citable brand assertion (06 §2.1 Claim). The subject/predicate/object
+// triple form - the same shape as the event.v1.Assertion payload, but brand-authored
+// (declarative truth, no measurable confidence) and carrying the evidence the brand
+// cites. These are the Brand-Truth nodes a KnowledgeConflict points at (06 §2.3
+// brand_truth_node).
+message Claim {
+  string id = 1;
+  // The entity this claim is about (06 §2.1 subject_id).
+  string subject_id = 2;
+  // "is_a" | "competes_with" | "differentiates_by" | ... (06 §2.1, 06 §3 edges).
+  string predicate = 3;
+  // Literal OR a node reference (06 §3 - the edge carries either).
+  oneof object {
+    string object_literal = 4;
+    string object_id = 5;
+  }
+  // The URLs/docs the brand cites for this claim (06 §2.1 evidence: SourceRef[]). Strings
+  // in the MVP; the SourceDoc typed form (06 §2.5) lands in the thicken pass.
+  repeated string evidence = 6;
+}
+
+// The query the brand wants to win in AI answers (06 §2.5). Onboarding declares these
+// (04 §3 F1 - "3 buyer queries"); the probe fans out across them (F3); the diagnosis
+// reads them to score the brand's presence per query.
+message BuyerQuery {
+  string id = 1;
+  string tenant_id = 2;
+  string query_text = 3;
+  // The query intent (06 §2.5).
+  QueryIntent intent = 4;
+  // Which brand entity should surface for this query (06 §2.5 target_entity_id).
+  string target_entity_id = 5;
+  // The surfaces the brand wants to win this query on (06 §2.5 target_surface[]).
+  repeated Surface target_surface = 6;
+}
+
+// The brand's organization - the Brand-Truth SOT root (06 §2.1). Drives the
+// schema.org Organization JSON-LD (06 §2.4 SchemaElement). Each field maps to a
+// schema.org property (04 §3 F6 - the schema is generated for the EXACT entities the
+// surfaces failed to resolve).
+message Organization {
+  string id = 1;
+  string tenant_id = 2;
+  string legal_name = 3;
+  repeated string alternate_names = 4;
+  string parent_org_id = 5;
+  // The industry category, free-text in the MVP (06 §2.1 IndustryCategory enum deferred).
+  string category = 6;
+  // ISO-8601 date (06 §2.1 founded_date). String for the MVP; the typed Date lands later.
+  string founded_date = 7;
+  // Founder names (06 §2.5 Person is a taxonomy type; the MVP carries names only).
+  repeated string founders = 8;
+  PostalAddress hq = 9;
+  // The brand's differentiators (06 §2.1 differentiators[]: Claim).
+  repeated Claim differentiators = 10;
+  // The brand-voice summary (06 §2.1 voice_profile) - one line for the MVP.
+  string voice = 11;
+  // The brand's primary URL (04 §3 F1 - onboarding field). The connector crawl origin.
+  string primary_url = 12;
+}
+
+// A product the brand sells (06 §2.1). Drives the schema.org Product JSON-LD.
+message Product {
+  string id = 1;
+  string tenant_id = 2;
+  string name = 3;
+  string sku = 4;
+  string parent_org_id = 5;
+  string category = 6;
+  // The ideal customer profile one-liner (04 §3 F1 - onboarding field).
+  string icp = 7;
+  repeated Claim features = 8;
+  string docs_url = 9;
+  string changelog_url = 10;
+}
+
+// A competitor the brand tracks (06 §2.2 Competitor, brand-declared at onboarding per
+// 04 §3 F12). The mention trajectory (tracked_competitiveness: SurfaceAssertion[]) is
+// fetched separately from the perception layer; the brand declares identity here.
+message Competitor {
+  string id = 1;
+  string tenant_id = 2;
+  string name = 3;
+  string primary_url = 4;
+  // The resolved entity id when the competitor is itself graph-resolved (06 §2.2).
+  string resolved_entity_id = 5;
+}
+
+// The Brand Card (04 §3 F4) - the editable Brand-Truth SOT surface. Wraps the
+// organization + products + the queries the brand wants to win + the competitors it
+// tracks. A Brand Card edit is a bi-temporal append-only assertion
+// (ProvenanceSourceType.BRAND_CARD_EDIT); the editor renders the audit hover on every
+// field (19 §8). The Brand Card is the intervention-target SOT the Draft seam reads
+// (06 §2.4 Intervention.params) + the comparison Panel 2 shows against the perceived
+// answer (19 §3 Panel 2).
+message BrandCard {
+  string id = 1;
+  string tenant_id = 2;
+  Organization organization = 3;
+  repeated Product products = 4;
+  repeated BuyerQuery buyer_queries = 5;
+  repeated Competitor competitors = 6;
+  // When the Brand Card was last edited (the tx_time surface; 19 §8 audit hover).
+  google.protobuf.Timestamp updated_at = 7;
+}

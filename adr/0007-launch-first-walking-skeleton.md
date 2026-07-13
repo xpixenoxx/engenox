@@ -1,0 +1,101 @@
+# ADR-0007 — Launch-first walking-skeleton execution ordering (thin-column-then-thicken), preserving all architectural invariants
+
+> **Status:** ACCEPTED
+> **Date:** 2026-07-11 (ratified by founder signature, this session)
+> **Supercedes:** `docs/28_EXECUTION_STRATEGY.md` §4 (the phase-roadmap stage-complete-serial ordering) + `docs/tickets/M0/README.md` (the M0 sequencing recommendation, T01→T15 critical-path serial). **Does NOT supercede:** `28` §8 (the execution invariants), `25_IMPLEMENTATION_PLAN.md` §4 (the readiness-closure gate sequence), `26_MVP_SCOPE.md` (the MVP scope), or any of `00–27`. Those are preserved unchanged.
+> **Evidence:** (none — this is an execution-sequencing decision authorized by the founder, not a stack-audit finding. The architectural choices it preserves are evidenced in their own ADRs: ADR-0001, ADR-0003.)
+> **Binds at:** immediately — the M0→M9 execution ordering (thin column → concierge cohort → thickening pass to public self-serve).
+
+## Context
+
+Four days into the code phase: E01–E20 are ✅ in `docs/_RECOVERY.md`; M0 is 3 of 15 tickets done (T01 workspace, T02 contract spine, T03 dep-direction lint), and on disk those three are *real* — actual `.proto`s in `entity/event/service/policy v1`, generated TS/Go/Python, a round-trip vitest, dep-cruiser + golangci-depguard + import-linter configured against the live packages, a contract-graph assertion. The anti-rework spine is paid for; `services/`/`libs/`/`web/` are still empty `.keep`.
+
+The crucial reframe: **the blueprint is already a launch-first plan.** `26` defines the MVP as the closed-loop irreducible minimum (F1–F12, one $129 Starter tier, the <10-minute journey, public self-serve); `25` §1 says "ship the loop, not the audit; the loop is the asset"; `00` §4's final verdict holds "development may begin… while the gating discipline lands on the milestones where it materially protects customers." So the question is not *whether* to ship the MVP fast — `25`/`26`'s M9 is that — but *how fast* and *in what ordering*.
+
+The current sequencing (`28` §4 + the M0 README) stages milestones serially and **stage-completes each before advancing**; the user-visible surface (the `web/` frontend + the <10-minute journey) is M6 of 9, reached only after M1–M5 fully close. For a solo founder+AI whose stated priority is a deployable, customer-touchable SaaS MVP "as fast as responsibly possible," that ordering front-loads scale/platform work (full AGE+pgvector, Debezium→Redpanda, the R2 mirror, the M8 load test) that does not de-risk the *first customer touch*.
+
+The founder has authorized two decisions (this session): (1) adopt a **thin-column-then-thicken** ordering — one thin vertical column through all stages, then an additive thickening pass; (2) serve a **controlled concierge cohort** (Gates C, a handful of tenants, single dev cell, founder-operated, manual dial at `propose`, human-approved PRs) on the thin slice while the thickening/hardening pass runs toward public self-serve (Gates D-final). The founder's explicit constraint: the long-term architecture, the contracts, the security boundaries, and the intelligence foundations **remain non-negotiable** — this is sequencing-only, not architecture.
+
+## Decision
+
+**Adopt the thin-column-then-thicken execution ordering. The milestones, the readiness-closure gate sequence (`25` §4), and the MVP scope (`26`) are unchanged; only the per-pass scope shrinks to the seam + minimal real behavior, and a second additive pass fills the deferred seams.**
+
+### The Thinning Rule (the candor-critical discipline)
+
+**Thin = content, scale, cadence. Never = gate mechanism, invariant presence, seam contract, integrity tag, signature, or candor-floor render.** A thin Cedar gate has one trivial policy but *still two-pass with demote-on-alert*. A thin seam layer constrains decoding on Extract only but *still routes every call through `gateway`*. A thin RLS baseline covers the ~6 real tables but *every real table has a policy from the first write*. Thinning the *mechanism* creates a rewrite-forcing pocket; thinning the *content* is the discipline this ADR authorizes.
+
+### The Walking Skeleton (the thin column — every line *on* the spine, never *around* it)
+
+1. **M0-thin spine** (~4–5 days): T04 (a single *dev* cell — CNPG per ADR-0003, **not** the full prod cell; AGE/pgvector bootstrap present but unused on first pass) + T06 (CI: contract-compat + dep-direction lint + forbidden-import **first**; Trivy/secret-scan second) + T14 + T15 (Cedar + RLS *exemplars* — the patterns the AI copies, per `28` §4 Phase 1). Park T08/T09 (skills/MCP) on the parallel track — useful, not on the critical path. Preserves: I1 the contract spine (T02 ✅), the dep-direction lint (T03 ✅), the CI gate skeleton (`17` §4).
+2. **M1-thin** (~2–3 days): the minimum tenant schema (the ~6 tables the loop needs), RLS policy + canary-row test + `pg_policies` introspection on *those* tables, `libs/kg` `assertion_view`. Defer to thicken: AGE/pgvector, Debezium→Redpanda→sink, the R2 mirror, KMS KEK/DEK. Preserves: the RLS-before-data invariant (`25` §4, `00` §3 P0) — RLS is on every *real* table from the first write; `assertion_view` as the only bi-temporal path (`13` §3).
+3. **M2-thin** (~3–4 days): `gateway` with LiteLLM routing, the six seam *signatures* from the T02 spine, constrained decoding on Extract (the highest-volume seam), the verifier-reject test, the per-tenant token-budget gate. Planner = Claude (Opus 4.8); Critic = GPT-class — the cross-family *property* (`11` §2, `00` §2 inv 5) is preserved; the *cadence* thins. Preserves: gateway-leaf-only (CLAUDE.md §5), the six bounded seams as stateless schema-constrained functions.
+4. **M3-thin — the hinge** (~4–5 days): Temporal (self-hosted Postgres-backend, the MVP-cost pick) with `AtlasCycle` + `InterventionSaga` skeletons (typed plan DAG, one real activity); `action` with GitHub-App auth + one hard-coded allow-list-glob + the rule-based diff-review blocker + the Cedar two-pass gate with **one trivial policy** + the dial ledger at `propose` (denies every escalation — that *is* the candor, `26` §4) + typed `IdempotencyKey` on every external-side-effect activity. **Thin the policy content; never the gate mechanism.** Preserves: Temporal-owns-the-loop (`00` §2 inv 3), the action gate (`25` §3 M3, the named hinge), the dial at `propose` + no auto-merge (`26` §6), `IdempotencyKey` (CI-blocked, `00` §3 P1).
+5. **M4-thin ‖ M5-thin** (~3–4 days each, parallel): `measurement` with simple-SCM + DML + a *placeholder* conformal + the EWMA/CUSUM foreign-change detector, writing a **signed** corpus row to Postgres (the WORM provenance seam writes from day 1, `00` §2 inv 8); `perception` with the GSC connector + the fast-partial probe path. Preserves: the signed corpus row, the integrity tags, the foreign-change detector (the safety net ships *with* the loop, `26` §4). The placeholder conformal *is* `26` §2.4 — calibration matures behind the candor microcopy.
+6. **M6-thin** (~4–5 days): `web/` Next.js App Router — `/onboarding` (F1), `/dashboard`, `/brand-card` (F4), `/interventions` (F7, the 1-click PR connector, propose-only), `/report` (F9, the Candor Report **with** the wider/preliminary CI microcopy + the contrarian block + the Provenance Audit Hover — the candor floor is *in the first surface*, not a v2 polish), the dial UI at Co-pilot (F12, the three-axis ledger explainer, escalation grayed-out with the candor explainer), WorkOS edge auth, SSE for the fast-partial partials. Preserves: the candor floor (`26` §4) — no lift-without-CI, no contrarian-block-omission.
+7. **The <10-minute journey wired** (~2–3 days): signup → onboarding → fast-partial probe (<90s activation, F2) → Brand Card → diagnosis → proposed intervention → opened PR (no merge) → measurement window → Candor Report renders. Preserves: the <10-minute journey (`26` §5, `25` §3 M6/M9).
+
+**The Thickening Pass** (all additive, concurrent with the concierge cohort): AGE + pgvector, Debezium→Redpanda→sink, the R2 Object-Lock WORM mirror, the KMS KEK + per-tenant DEK envelope, the full connector set (GA4/CMS/Ahrefs/Semrush), the real conformal calibrator + `grf`, the M8 load test + cell-pair DR rehearsal + SOC-2 audit completeness + the CNPG HA/PITR/backup discipline (the ADR-0003 operational consequence), Stripe + public self-serve (Gates D-final). **No thickening rewrites the slice; it fills seams already present.** The `25` §4 gate closures land here (Scalability + Production-Readiness before public self-serve; the AI-Intelligence eval half before the candor microcopy lifts, `26` §4).
+
+**The Concierge Cohort** (Gates C, **not** D): a handful of tenants, single dev cell, founder-operated, manual dial at `propose`, human-approved PRs, the consented-panel seed rows banked. This is `25` §3 M7's Gates-C path used exactly as designed — **not** a bypass of M8. Public self-serve (Gates D-final) remains M8-gated.
+
+### What does NOT change (the preserved, non-negotiable list)
+
+The 12 architectural invariants the thin column must honor at every step (skipping any one creates a rewrite-forcing pocket):
+
+1. Contract spine — the only cross-language type source (T02 ✅).
+2. RLS-by-tenant + `tenant_id` from the JWT + canary-row + `pg_policies` introspection — before any tenant's data is written (M1).
+3. Dep-direction lint + stack-drift watchdog (T03 ✅) — boundary enforcement, in place.
+4. `gateway` as the only model-touching surface; constrained decoding on the seams; no provider SDK imported outside `gateway`.
+5. The six bounded seams as stateless, schema-constrained functions (the seam contracts live in the T02 spine).
+6. Temporal owns the closed loop — no workflow state in an agent framework, a Redis hash, or a `setTimeout`.
+7. The dial at `propose`; no auto-merge (the customer merges their own PR).
+8. The action-layer gate: allow-list-glob + rule-based diff-review blocker + Cedar two-pass — thin the *policy content*, never the *gate mechanism*.
+9. `IdempotencyKey` on every external-side-effect activity (CI-blocked).
+10. The candor floor in the UI — lift always rendered with its CI; the contrarian block present; the Provenance Audit Hover; the "preliminary — calibration in flight" microcopy.
+11. The WORM provenance seam — every commit-to-state reproducible from a signed node; the *signature* writes from day 1 (the R2 mirror thickens later).
+12. The cross-family Critic *property* — Planner and Critic are never the same family; the *cadence* thins, the *property* never does.
+
+Plus, unchanged and binding: the `25` §4 readiness-closure sequence (the gate *closure criteria* are untouched; only the *tempo* of reaching them changes) and the `26` MVP scope (this ADR *accelerates* toward it; it does not redefine it).
+
+## Alternatives Considered
+
+- **Keep the stage-complete-serial ordering (status quo, `28` §4 + M0 README).** Rejected by the founder — the customer-touchable surface is M6-of-9, too slow for the launch-first priority, and the front-loaded scale/platform work does not de-risk the first customer touch. The anti-rework value of the spine (T01–T03, done) is preserved either way; only the ordering changes.
+- **A disposable throwaway MVP** (Next.js + vanilla Postgres-no-RLS + direct OpenAI calls + `setTimeout` loops + Stripe, "rewrite into the real architecture later"). Rejected — explicitly rejected by `28` §0/§1 ("the AI author + adversarial review, the correctness moat") and by the founder ("NOT disposable MVP code"). ~100% rewrite-forcing; violates RLS-before-data, gateway-before-LLM, Temporal-before-loops, and the candor floor. The stack-drift watchdog + the dep-direction lint block this by construction.
+- **Thin everything including the gates** (thinning the *mechanism*, not just the *content*). Rejected — the real drift risk to name. Skipping the Cedar two-pass *mechanism* (not just its policy *content*), or writing the first tables without RLS, or calling a provider directly around `gateway`, or using `setTimeout` instead of Temporal, each creates a rewrite-forcing pocket. The Thinning Rule + the 12-preserved-invariants list + the stack-drift watchdog + the CI RLS-introspection + the dep-direction lint are the contract and the enforcers. "MVP speed" is exactly the social-engineering vector for this drift; the ADR names it so the watchdog has an explicit charter.
+- **Ship the thin slice to public self-serve before M8 hardening.** Rejected — this would bypass the Production-Readiness gate (`25` §4). The thin slice serves the concierge cohort (Gates C), **not** public self-serve (Gates D-final). Public self-serve remains M8-gated. The concierge cohort is the blueprint's own Gates-C path, used as designed.
+
+## Consequences
+
+**Positives:**
+- Customer-touchable slice reached in ~3–4 weeks (the walking skeleton through the <10-minute journey), vs M6-of-9 under the prior ordering. The user-visible surface ships first; scale/platform ships in the additive thicken.
+- Every line of the thin column is a long-term line (built on T02, T03, the M1-thin RLS, the M2-thin gateway, the M3-thin Temporal + action gate). The thicken pass *adds*, never *rebuilds*. No architectural debt created.
+- The moat assets accrue during the thin pass: signed corpus rows, the consent ledger, the consented-panel + concierge rows — the six time-and-consent assets begin banking during the concierge cohort, not after.
+- The candor floor ships *with* the first slice (the Candor Report renders lift + CI + contrarian block + Provenance Audit Hover from the first `/report`) — the commercial differentiator is in the first user-facing surface, not v2 polish.
+- Reaches the blueprint's own M9 goal (Gates D-final, public self-serve, <10-minute journey) without weakening any readiness closure — the closures land in the thickening pass concurrent with the concierge cohort.
+- The non-negotiables (architecture, contracts, security boundaries, intelligence foundations) are explicitly preserved — this ADR touches sequencing only.
+
+**Negatives / risks:**
+- **The thin slice is not hardened for public self-serve.** Single dev cell, no CNPG HA/backup/PITR (the ADR-0003 operational discipline), no load test, no DR rehearsal, no SOC-2 audit completeness. A concierge-cohort incident is founder-operated recovery (the human is in the loop — Gates C, manual dial, human-approved PR). Acceptable for Gates C; unacceptable for Gates D. The boundary is explicit and is the single most important operational candor point of this ADR.
+- **ADR-0003's infra/SRE hire consequence is reframed, not erased.** ADR-0003 (ACCEPTED, M0+M1) named the infra/SRE hire non-deferrable at M1. The thin M1-thin (single dev cell, minimal schema, no full AGE/pgvector cluster) *narrows the M1 operational peak* — the founder can operate the single dev cell through the concierge cohort. But the ADR-0003 hire obligation **reasserts at the M8 thickening pass** (before public self-serve, when full CNPG HA/PITR/backup discipline lands). This ADR does **not** modify ADR-0003's architectural choice (CNPG, not AlloyDB) — the M0-thin cell template (T04) still provisions CNPG per ADR-0003. The hire-timing reframing is a Consequence this ADR names; if the founder judges it incompatible with ADR-0003's M1 binding, that is a separate sub-clause to ratify. Candor: narrowing the operational peak on the thin pass, not erasing the eventual hire obligation.
+- **Thinning-the-mechanism drift.** The risk a contributor misreads "thin" as license to skip the Cedar two-pass *mechanism* (not just defer its policy *content*), or to call a provider directly around `gateway`, or to use `setTimeout` instead of Temporal, or to write the first tables without RLS. Each creates a rewrite-forcing pocket. The Thinning Rule + the 12-preserved-invariants list + the stack-drift watchdog + the CI RLS-introspection + the dep-direction lint are the contract and enforcers. The risk is real because "MVP speed" is exactly the social-engineering vector for it; the ADR names it so the watchdog has an explicit charter.
+- **The Argilla + consented-panel ground-truth discipline thins to the concierge cohort.** The MVP still does **not** use LLM-as-judge as ground truth (`26` §6 non-goal) — that invariant holds. But the real human-review ground truth comes from the concierge cohort + the founder-network panel (the seed), not a statistically-representative panel (Horizon 2+). This is exactly `26` §4 "the corpus renders small-N honestly" — the candor microcopy carries it. Named so it is not read as a weakening of the LLM-as-judge rejection.
+- **Two streams of work in flight during the concierge window** (operate-the-slice + harden-the-platform). For a solo founder this is tighter than the prior plan's single stream; founder-burnout risk (`28` §7 risk #1) is **higher** under this ordering in the concierge window. Mitigation: the concierge cohort is deliberately small (a handful of tenants) and founder-operated at the manual `propose` dial — the operational tempo is bounded by the founder's manual cadence, not by SLA pressure.
+
+**Closure work required:**
+- The thin-column ticket sequence — recomposing T04/T06/T14/T15 + the M1-thin→M6-thin spike tickets + the <10-minute-journey integration ticket — written JIT, each Tier-1-ticketed per `28` §6 Challenge F. This ADR authorizes the recomposition; it does not itself write the tickets.
+- A one-page **concierge-cohort operations runbook** (single dev cell; manual dial at `propose`; human-approved PRs; incident→founder recovery; the Gates-C→Gates-D boundary explicit) — the operational candor artifact that distinguishes this from "ship to the public."
+- The **infra/SRE hire-plan timing update** (the ADR-0003 consequence reframed by this ordering) — the one-page hiring plan, founder-funding-conditional, now scoped "before the M8 thickening pass / public self-serve" rather than "before M1." A closure-work pointer, tracked in `_RECOVERY.md`.
+- The **stack-drift watchdog charter update** (E16) — add the Thinning Rule to the watchdog's forbidden-pattern set: a provider SDK imported outside `gateway`; a `setTimeout` workflow loop; a table created in a migration without an RLS policy; a Cedar gate that is not two-pass even with one trivial policy; a lift number rendered without its CI; a contrarian block omitted. (A spec update to E16 via this ADR's closure-work, not a frozen-doc edit.)
+- The **thickening-pass ticket backlog** — the deferred seams, JIT-authored before the concierge cohort transitions to public self-serve. `27` already documents these as post-MVP; this ADR re-pins them as the *concurrent* thickening pass.
+- `_RECOVERY.md` — add an entry for ADR-0007 (the execution-sequencing authorization) + the thin-column ticket recomposition as the new "next work" pointer.
+
+## References
+
+- `docs/26_MVP_SCOPE.md` (the MVP is the closed-loop irreducible minimum; this ADR accelerates toward it, does not redefine it)
+- `docs/25_IMPLEMENTATION_PLAN.md` §4 (the readiness-closure gate sequence — preserved unchanged) + §1 (ship-the-loop-not-the-audit)
+- `docs/28_EXECUTION_STRATEGY.md` §4 (the phase roadmap — its *ordering* is what this ADR supercedes) + §8 (the execution invariants — preserved) + §6 Challenge B (adversarial review tiered by blast radius — the thin column is mostly Tier-2; the spine stays Tier-1) + §7 risk #1 (founder burnout — heightened in the concierge window, named above)
+- `docs/00_FOUNDATION_FINAL.md` §2 (the 8 invariants — preserved) + §4 (the final verdict: gating lands where it protects customers — the basis for a concierge-cohort slice before public self-serve)
+- `docs/tickets/M0/README.md` (the M0 sequencing recommendation — its *order* is recomposed by this ADR; the M0 *tickets* T01–T15 are preserved, recomposed into the thin column)
+- `CLAUDE.md` §1 (a frozen doc is never edited; a swap is an ADR — this is the ADR for the sequencing swap) + §8 (the author never reviews its own work — the PROPOSED→ACCEPTED ratification is the founder's signature)
+- `adr/0003-self-managed-postgres-cnpg-not-alloydb.md` (the CNPG choice is unchanged; this ADR reframes its hire-timing consequence, in Closure work above)
+- `adr/README.md` (the ADR discipline — PROPOSED transitions to ACCEPTED on founder signature)

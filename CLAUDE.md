@@ -1,4 +1,4 @@
-# CLAUDE.md — Engenox (pre-launch codename; the "Citera" rename is a pre-launch action per `01` §2 + `27` §6)
+ # CLAUDE.md — Engenox (pre-launch codename; the "Citera" rename is a pre-launch action per `01` §2 + `27` §6)
 
 > The single highest-leverage file in the repo. Pinned at repo root so Claude Code reads it at session start. This file pins the **verified 2026 stack** (per `docs/29_STACK_VERIFICATION.md`) to the **frozen blueprint** (docs 00–29). It does not re-derive the architecture; it points to it. It does not negotiate the stack; it enforces it. **If a frozen doc and this file ever seem to conflict, the frozen doc is authoritative and this file is edited to match — the doc is the architecture-of-record, this file is the operating manual.**
 
@@ -9,6 +9,7 @@
 Engenox is the world's first **AI Visibility Operating System** — a closed loop that *perceives* a brand's AI presence → *diagnoses* the conflict → *proposes* an intervention → *opens a PR* (NOT auto-merge in the MVP) → *measures* the outcome → *writes the corpus row* → *renders the candor*. The architecture is a **two-spine intelligence**: a typed bi-temporal knowledge graph (Postgres+AGE → FalkorDB) as the spine of *truth*, and a counterfactual uplift estimator on a signed, integrity-tagged Causal Intervention-Outcome (CIO) corpus as the spine of *action*, with frontier LLMs reduced to a bounded **proposing layer** (six stateless, schema-constrained seams) that can never commit. The moat is the **calibrated, consented, time-accumulated corpus** — six time-and-consent assets a clone cannot copy. The product is built by a solo founder (the agency "Pixenox Solutions") acting as 15 roles, with an AI author, until the first hires.
 
 ---
+
 
 ## 1. The frozen blueprint — do NOT re-litigate
 
@@ -23,7 +24,7 @@ The architecture is **FROZEN** in `docs/`:
 **Rules:**
 - Never re-derive architecture in a doc, a comment, or a standup. Cite the doc + section (`// 11 §2c` is the convention from `22` §5).
 - A frozen doc is **never edited**. A verified-better-2026-choice is an **ADR** in `adr/NNNN-<slug>.md` that *supercedes* the documented choice at implementation time. The 4 ADRs from the audit are listed in §3 below.
-- No application code until every enforcement-environment artifact (E03–E16) + the M0 plan (E17) are in place; the **single first M0 ticket** (E18) is the only product code authorized before the environment is reviewed. We are currently in Phase 0 unless `docs/_RECOVERY.md` shows E18 ✅.
+- No application code until every enforcement-environment artifact (E03–E16) + the M0 plan (E17) are in place; the **single first M0 ticket** (E18) is the only product code authorized before the environment is reviewed. **The enforcement environment (E01–E16) + the M0 plan (E17) are complete; E18–E20 are ✅ in `docs/_RECOVERY.md`. `adr/0007-launch-first-walking-skeleton.md` (ACCEPTED) authorizes the launch-first thin-column-then-thicken execution** — the next work is the thin-M0 spine (T04 dev cell + T06 CI + T14/T15 exemplars), built on the long-term OS codebase (NOT disposable MVP code).
 
 ---
 
@@ -75,6 +76,7 @@ The architecture is **FROZEN** in `docs/`:
 | `adr/0004-automq-not-warpstream-as-graduation-target.md` | WarpStream → AutoMQ as the bus graduation target (WarpStream now Confluent→IBM) | Phase-2 graduation |
 | `adr/0005-fts-tier-deferred-re-evaluate.md` | Quickwit/Datadog → Postgres FTS for the MVP; the FTS tier re-evaluated at the corpus-search milestone | Phase-2 |
 | `adr/0006-cross-family-model-roster-2026.md` | The 2026 cross-family model roster (the Critic + the seam assignments) | M2 |
+| `adr/0007-launch-first-walking-skeleton.md` | **Execution-sequencing** (NOT a stack swap) — `28` §4 + the M0 README stage-complete-serial ordering → **thin-column-then-thicken**; all 12 architectural invariants + the `25` §4 gate sequence + `26` MVP scope preserved | **immediately** |
 
 **Swap 2 is the most consequential:** it makes the infra/SRE hire non-deferrable at M1 (founder-funding-conditional per `28` §7). If you (the founder) cannot fund that hire, the fallback is a contract SRE for the first 3 months covering CNPG HA/backup/PITR. Flag this whenever M1 is discussed.
 
@@ -166,7 +168,7 @@ The blueprint phase survived rate-limit interruptions on this discipline; it con
 
 - `docs/_RECOVERY.md` is the tracker. After **every completed artifact**, write it to disk immediately, mark it ✅ in the tracker, continue.
 - If interrupted mid-artifact, **complete the partial file — do not replace it.** If interrupted between artifacts, resume from the first ⬜.
-- We are currently in **Phase 0 (the enforcement environment)** unless `docs/_RECOVERY.md` shows E18 ✅. The artifacts E01–E18 are tracked there.
+- The enforcement environment (E01–E16) is complete; **E18–E20 are ✅**; **ADR-0007 (ACCEPTED) authorizes the launch-first execution** — the next work is the thin-M0 spine per `adr/0007-launch-first-walking-skeleton.md`. `docs/_RECOVERY.md` tracks the artifacts (E01–E21; ADR-0007 at E21).
 - Every artifact is FROZEN on completion; a later change is an ADR, not an edit.
 
 ---

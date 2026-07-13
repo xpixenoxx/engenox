@@ -1,0 +1,146 @@
+// surface.proto - the AI-surface entity vocabulary (06 §2.2) + the cross-cutting enums
+// the perception layer operates over.
+//
+// These mirror the brand-truth entities but record WHAT THE AI SURFACES SAY, with
+// multi-sample distributions rather than declared truth (06 §2.2). AnswerEvent is the
+// atomic probe sample (the audit-trail floor, 19 §3 Panel 1); SurfaceAssertion is the
+// aggregated multi-sample belief a week (06 §2.2). The Surface + Stance + QueryIntent
+// enums live HERE (not in brand.proto) so brand.proto imports surface.proto one-way
+// (brand -> surface -> entity) with no cycle: the brand declares which surfaces it
+// wants to win (BuyerQuery.target_surface), the surface layer never imports the brand.
+//
+// Strict-add-only v1 (14 §5 + 18 §8): a new surface / stance / message field is added
+// here; removing/renaming breaks FULL compatibility and the contract-compat gate (T06).
+//
+// Cites: 06 §2.2 (AI-surface entities); 06 §2.5 (BuyerQuery intent); 19 §3 Panel 1 (the
+// verbatim probe read); 24 §2 (pkg/contracts root); ADR-0001.
+
+syntax = "proto3";
+
+package engenox.entity.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// AssertedNode + TimeInterval + ProvenanceRef + Distribution come from the abstract root
+// (06 §2.1 / §2.2). surface -> entity is the natural direction; the contract-graph check
+// (T03) asserts it stays unidirectional.
+import "engenox/entity/v1/entity.proto";
+
+// The Go import path (the contract package's Go module, 24 §6) - same package as
+// entity.proto, so the generated Go shares the entityv1 package name.
+option go_package = "github.com/engenox/contracts/generated/go/engenox/entity/v1;entityv1";
+
+// The AI surface a probe targets (06 §2.2). ChatGPT + Perplexity + Gemini are the
+// Phase-1 wedge set (04 §3 F3); Grok + Claude are Phase 1.5. The surfaces are PROBE
+// TARGETS, not reasoners - the gateway's reasoner roster is separate (11 §5, ADR-0006).
+enum Surface {
+  // The zero value; a verified extraction never emits this.
+  SURFACE_UNSPECIFIED = 0;
+  SURFACE_CHATGPT = 1;
+  SURFACE_PERPLEXITY = 2;
+  SURFACE_GEMINI = 3;
+  SURFACE_GROK = 4;
+  SURFACE_CLAUDE = 5;
+  reserved 6 to 999;
+}
+
+// How a surface positioned the brand on a query (06 §2.2 MentionRef.stance - positive |
+// neutral | negative | misrepresented | omitted). "omitted" is the CitationAbsence /
+// Missing conflict trigger (06 §2.3). The chip is colored AND labeled (19 §10 - not
+// color-only).
+enum Stance {
+  STANCE_UNSPECIFIED = 0;
+  STANCE_POSITIVE = 1;
+  STANCE_NEUTRAL = 2;
+  STANCE_NEGATIVE = 3;
+  STANCE_MISREPRESENTED = 4;
+  STANCE_OMITTED = 5;
+  reserved 6 to 999;
+}
+
+// The intent of a buyer query (06 §2.5 BuyerQuery.intent). commercial | informational |
+// navigational | transactional. Drives the probe's query templates + the diagnosis'
+// expected-target-entity.
+enum QueryIntent {
+  QUERY_INTENT_UNSPECIFIED = 0;
+  QUERY_INTENT_COMMERCIAL = 1;
+  QUERY_INTENT_INFORMATIONAL = 2;
+  QUERY_INTENT_NAVIGATIONAL = 3;
+  QUERY_INTENT_TRANSACTIONAL = 4;
+  reserved 5 to 999;
+}
+
+// A single mention of an entity inside a verbatim answer (06 §2.2). The span offsets
+// anchor the click-to-provenance hover onto the exact quoted text (19 §3 Panel 1).
+message MentionRef {
+  // The resolved entity id (a brand or competitor node), or empty when the surface
+  // mentioned an entity Engenox could not resolve (the "ARM MISSING" flag, 04 §5).
+  string entity_id = 1;
+  // The surface-surface text of the mentioned entity (the substring as it appeared), for
+  // the audit hover when the entity is unresolved.
+  string entity_name = 2;
+  // The surface this mention was captured on (06 §2.2).
+  Surface surface = 3;
+  // The surface's positioning (06 §2.2).
+  Stance stance = 4;
+  // The half-open char span [start, end) into AnswerEvent.verbatim_answer (06 §2.2).
+  int32 span_start = 5;
+  int32 span_end = 6;
+  // The rank position if the answer surfaced a list (06 §2.2 rankedAt); 0 = unranked.
+  int32 ranked_at = 7;
+}
+
+// The atomic probe sample - the audit-trail floor (06 §2.2). Every perception assertion
+// fans back to one of these via ProvenanceRef.source_id; the Provenance Audit Hover
+// (19 §3 Panel 1 + 10 §6) renders the verbatim_answer + model_id + captured_at.
+message AnswerEvent {
+  // Deterministic hash(tenant, probe_id, query, sample_idx, surface) (06 §2.2).
+  string id = 1;
+  // The RLS key (06 §2.2); from the JWT, never a client request (CLAUDE.md §8).
+  string tenant_id = 2;
+  // The probe run this sample belongs to (06 §2.2 probe_id).
+  string probe_id = 3;
+  // The surface probed (06 §2.2).
+  Surface surface = 4;
+  // The verbatim query text asked of the surface.
+  string query_text = 5;
+  // The BuyerQuery id (06 §2.5) this sample answers, when onboarding declared one.
+  string query_id = 6;
+  // The surface's model id, e.g. "gpt-5", "claude-opus-4-8" (06 §2.2). Stored verbatim -
+  // the candor floor (26 §6) never redacts the model_id the Provenance Audit Hover needs.
+  string model_id = 7;
+  // The sample index in the multi-sample fan-out (06 §2.2 sample_idx, 1..N).
+  int32 sample_idx = 8;
+  // The verbatim answer the surface returned (06 §2.2). The audit-trail floor; the hover
+  // shows this to the customer exactly as the surface said it.
+  string verbatim_answer = 9;
+  // The citations the surface attached (06 §2.2 cited_sources[] - the URLs).
+  repeated string cited_sources = 10;
+  // The brand + competitor mentions Extracted from this answer (06 §2.2).
+  repeated MentionRef mentions = 11;
+  // When the sample was captured (06 §2.2 captured_at).
+  google.protobuf.Timestamp captured_at = 12;
+}
+
+// The aggregated multi-sample belief of a surface about an entity on a query over a
+// week (06 §2.2). mention_prob + avg_rank are binomial summaries carried on the
+// SurfaceAssertion (the Distribution message from entity.proto); stance_distribution is
+// the multinomial, deferred to the thicken pass. This is the perception side a
+// KnowledgeConflict references (06 §2.3 surface_assertion_id).
+message SurfaceAssertion {
+  // The entity this assertion is about.
+  string entity_id = 1;
+  string tenant_id = 2;
+  // The surface + the query this belief is over.
+  Surface surface = 3;
+  string query_id = 4;
+  // The mention probability, multi-sample (06 §2.2 mention_prob: Distribution). The
+  // candor floor: the dashboard tile shows the point + the spread, never the point alone.
+  engenox.entity.v1.Distribution mention_prob = 5;
+  // The average rank, multi-sample (06 §2.2 avg_rank: Distribution).
+  engenox.entity.v1.Distribution avg_rank = 6;
+  // The sample count this aggregate summarizes (06 §2.2 "over N samples").
+  uint32 sample_count = 7;
+  // The week this belief is true-of (06 §2.2 valid_time: week_interval).
+  engenox.entity.v1.TimeInterval valid_time = 8;
+}

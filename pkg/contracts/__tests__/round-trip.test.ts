@@ -24,10 +24,14 @@ import {
 import {
   AssertionEventSchema,
   AssertionSchema,
+} from "../generated/ts/engenox/event/v1/event_pb.js";
+// The integrity-tag vocabulary - relocated to entity.v1 at A0 (ADR-0008): the
+// entity/outcome canonical home (06 §2.4). event -> entity stays the single direction.
+import {
   ForeignChangeStatus,
   IdentificationStrategy,
   IntegrityTagsSchema,
-} from "../generated/ts/engenox/event/v1/event_pb.js";
+} from "../generated/ts/engenox/entity/v1/integrity_pb.js";
 
 describe("AssertedNode (entity v1)", () => {
   it("survives a serialize/deserialize round-trip with all fields intact", () => {

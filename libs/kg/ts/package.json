@@ -1,0 +1,26 @@
+{
+  "name": "@engenox/kg",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The truth-spine typed access — the ONLY sanctioned bi-temporal query path (assertion_view, 13 §3). libs/kg sits BELOW the service layer; it never imports a service (24 §3). The thin-column ships a dev in-memory AssertionStore; the AssertionStore PORT is the long-term contract — the thickening swaps the store impl (CNPG + AGE per ADR-0003), never the access contract. Every appended node is bi-temporal: valid_time + tx_time are mandatory on every assertion (06 §7 invariant 2 + 13 §2), enforced by the type, not optional.",
+  "engines": { "node": ">=22" },
+  "exports": {
+    "./kg": "./src/kg.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@engenox/contracts": "workspace:*",
+    "neverthrow": "^8.2.0"
+  },
+  "devDependencies": {
+    "@bufbuild/protobuf": "^2.5.0",
+    "@types/node": "^26.1.1",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

@@ -8,6 +8,11 @@ packages:
   - "design-system"
   - "tools"
   # libs TS bindings land per-ticket (e.g. libs/kg/ts/) — add to this list when their package.json lands.
+  # A1 (E23) lands the four frozen-aligned foundation libs: kg · cedar · crypto · verifier (24 §3
+  # — libs sit below the service layer; the seam port is the generated gRPC client from contracts,
+  # not a separate libs/seam). pnpm silently skips globs without package.json, so libs/*/ts is safe
+  # against the still-.keep-only libs (fixtures, otel).
+  - "libs/*/ts"
 
   # pnpm 11's build-script approval — the `allowBuilds` map (dep name → bool). pnpm 11 no longer reads
   # package.json's `pnpm` field, and ignores the older `onlyBuiltDependencies` list for nx (it re-inserts

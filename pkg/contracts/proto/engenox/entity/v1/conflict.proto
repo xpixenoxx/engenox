@@ -1,0 +1,68 @@
+// conflict.proto - the KnowledgeConflict entity + the ConflictType vocabulary (06 §2.3).
+//
+// A conflict is a FIRST-CLASS entity, not an exception (06 §1 principle 4 + §2.3): when
+// a SurfaceAssertion disagrees with a Brand-Truth node, the Reconciler emits a typed
+// KnowledgeConflict - the trigger for the Decision layer's abductive reasoning (06 §5
+// step 4). The ConflictType enum is the constrained-choice vocabulary the Adjudicate seam
+// picks among (11 §3; it never free-generates a class). The severity is how
+// customer-visible / how lift-blocking the conflict is (06 §2.3) - gated by the
+// estimator, not marketing copy. The explainer is the candor microcopy: "this is why
+// your brand isn't showing up" (04 §3 F5, 19 §3 Panel 3).
+//
+// Strict-add-only v1 (14 §5). conflict -> entity (for TimeInterval); no surface/brand
+// import - references are string ids.
+//
+// Cites: 06 §2.3 (Conflict types); 11 §3 (the Adjudicate constrained choice); 04 §3 F5
+//        (the AI-readiness report); 19 §3 Panel 3 (the conflict); ADR-0001.
+
+syntax = "proto3";
+
+package engenox.entity.v1;
+
+import "google/protobuf/timestamp.proto";
+import "engenox/entity/v1/entity.proto";
+
+option go_package = "github.com/engenox/contracts/generated/go/engenox/entity/v1;entityv1";
+
+// The taxonomy the Adjudicate seam picks among (06 §2.3). The Reconciler (deterministic)
+// enumerates the candidate classes from the surface-vs-brand comparison; the Adjudicate
+// seam's constrained decoding (11 §3) can only pick from this enum, never invent a class.
+enum ConflictType {
+  CONFLICT_TYPE_UNSPECIFIED = 0;
+  // The surface asserts a prior version of a fact - reindexation lag (06 §2.3).
+  CONFLICT_TYPE_STALE = 1;
+  // The surface asserts a fact contradicted by brand-truth (06 §2.3).
+  CONFLICT_TYPE_WRONG = 2;
+  // The surface omits the brand entity entirely on a relevant query (06 §2.3) - the
+  // CitationAbsence / "ARM MISSING" trigger (04 §5).
+  CONFLICT_TYPE_MISSING = 3;
+  // The surface mentions the brand but with wrong category/attribution (06 §2.3).
+  CONFLICT_TYPE_AMBIGUOUS = 4;
+  // The surface attributes the brand's trait/position to a competitor (06 §2.3).
+  CONFLICT_TYPE_COMPETITOR_DISTORTION = 5;
+  reserved 6 to 999;
+}
+
+// A typed disagreement between Brand-Truth and a SurfaceAssertion (06 §2.3). The trigger
+// for the loop's propose phase (06 §5 step 4 -> 5). The dashboard renders these as the
+// conflict feed (19 §3 Panel 3 + the /dashboard conflict list).
+message KnowledgeConflict {
+  string id = 1;
+  string tenant_id = 2;
+  // The Brand-Truth node the conflict is against (06 §2.3 brand_truth_node_id).
+  string brand_truth_node_id = 3;
+  // The perception assertion the conflict is against (06 §2.3 surface_assertion_id).
+  string surface_assertion_id = 4;
+  // The typed conflict class (06 §2.3). The chip is colored AND labeled (19 §10).
+  ConflictType conflict_type = 5;
+  // How customer-visible / lift-blocking (06 §2.3 severity). 0..1; gated by the
+  // estimator, never inflated.
+  double severity = 6;
+  // When the conflict was detected (06 §2.3 detected_at).
+  google.protobuf.Timestamp detected_at = 7;
+  // When the conflict was true-of (06 §2.3 valid_time).
+  engenox.entity.v1.TimeInterval valid_time = 8;
+  // The one-paragraph candor explainer (04 §3 F5 / 19 §3 Panel 3) - "this is why your
+  // brand isn't showing up". Plain, specific, uncertainty-acknowledging (19 §12).
+  string explainer = 9;
+}

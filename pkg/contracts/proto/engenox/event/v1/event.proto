@@ -9,10 +9,11 @@
 //
 // The envelope carries schema_version (the envelope's structural version) and kg_version
 // (the KG semantic version this assertion is true-of) - the two fields the Schema
-// Registry gates (14 §5). The IntegrityTags gate the row's weight on the causal
-// estimator (06 §2.4): identification_strategy (RCT-eligible / quasi-experimental /
-// observational) and foreign_change_status (clean / suspected-bump / confirmed-bump /
-// period-invalid).
+// Registry gates (14 §5). The IntegrityTags (now in entity/v1/integrity.proto per
+// ADR-0008 - the integrity vocab's canonical home is the entity/outcome domain, 06 §2.4)
+// gate the row's weight on the causal estimator: identification_strategy (RCT-eligible /
+// quasi-experimental / observational) and foreign_change_status (clean / suspected-bump /
+// confirmed-bump / period-invalid).
 //
 // Strict-add-only compatibility under FULL (14 §5): the AssertionEvent envelope is the
 // bus spine; any drift breaks every sink. This exemplar is the reference a later event
@@ -34,49 +35,19 @@ import "google/protobuf/timestamp.proto";
 // The dependency arrow is event -> entity (events reference entities): the natural
 // direction; the contract-graph check (T03) asserts it stays unidirectional.
 import "engenox/entity/v1/entity.proto";
+// The integrity-tag vocabulary (06 §2.4) - relocated to entity.v1 at A0 (ADR-0008): the
+// entity-layer Outcome / LiftDistribution reference it, and an entity.v1 -> event.v1 import
+// would form a package cycle with this file's entity.v1 import. event -> entity stays
+// the single direction.
+import "engenox/entity/v1/integrity.proto";
 
 // The Go import path (the contract package's Go module, 24 §6).
 option go_package = "github.com/engenox/contracts/generated/go/engenox/event/v1;eventv1";
 
-// The identification strategy of an outcome row (06 §2.4). The highest weight in the
-// causal estimator goes to RCT-eligible rows (the consented panel, 13 §6); scraped /
-// observational rows are down-weighted. These tags gate the estimator weight (06 §2.4).
-enum IdentificationStrategy {
-  IDENTIFICATION_STRATEGY_UNSPECIFIED = 0;
-  // A consented-panel row (13 §6) - the highest estimator weight.
-  IDENTIFICATION_STRATEGY_RCT_ELIGIBLE = 1;
-  // A synthetic-control donor-basket row (06 §2.4).
-  IDENTIFICATION_STRATEGY_QUASI_EXPERIMENTAL = 2;
-  // A scraped/observational row (06 §2.4) - the lowest weight.
-  IDENTIFICATION_STRATEGY_OBSERVATIONAL = 3;
-}
-
-// The foreign-change status of a measurement window (06 §2.4). The honesty estimator's
-// discipline (12 §8): a foreign surface bump is never blamed on our intervention.
-// PERIOD_INVALID quarantines the outcome (12 §8) - it does NOT count as regret, does NOT
-// auto-demote, does NOT feed the scorer.
-enum ForeignChangeStatus {
-  FOREIGN_CHANGE_STATUS_UNSPECIFIED = 0;
-  // No surface-level drift detected in the window (06 §2.4).
-  FOREIGN_CHANGE_STATUS_CLEAN = 1;
-  // Drift detected; the outcome is recorded but down-weighted (12 §8).
-  FOREIGN_CHANGE_STATUS_SUSPECTED_BUMP = 2;
-  // Confirmed platform shift; the lift is partialled out via the SCM's surface-dynamics
-  // model (12 §8).
-  FOREIGN_CHANGE_STATUS_CONFIRMED_BUMP = 3;
-  // Quarantined; the row does not feed the scorer (12 §8).
-  FOREIGN_CHANGE_STATUS_PERIOD_INVALID = 4;
-}
-
-// The two integrity tags that gate an outcome row's weight on the causal estimator
-// (06 §2.4). These are load-bearing - they are the corpus's causal honesty, not
-// optional metadata (06 §2.4 commentary). The estimator reads them on every batch refit.
-message IntegrityTags {
-  // How the row was identified (06 §2.4).
-  IdentificationStrategy identification_strategy = 1;
-  // Whether the measurement window was contaminated (06 §2.4).
-  ForeignChangeStatus foreign_change_status = 2;
-}
+// The integrity vocabulary - IdentificationStrategy, ForeignChangeStatus, IntegrityTags -
+// moved to entity/v1/integrity.proto at A0 (ADR-0008): the canonical entity/outcome home
+// (06 §2.4). event -> entity stays the single direction; an entity.v1 -> event.v1 import
+// would form a package cycle with this file's entity.v1 import.
 
 // The typed assertion payload (14 §3). The subject/predicate/object triple form - the
 // Claim shape (06 §2.1) extended with the bi-temporal axes and the supersession pointer
@@ -123,8 +94,9 @@ message AssertionEvent {
   string kg_version = 5;
   // The typed assertion (14 §3).
   Assertion payload = 6;
-  // id_strategy + foreign_change_status (06 §2.4) - gate the estimator weight.
-  IntegrityTags tags = 7;
+  // id_strategy + foreign_change_status (06 §2.4) - gate the estimator weight. The
+  // typed IntegrityTags live in entity/v1/integrity.proto (ADR-0008) - the canonical home.
+  engenox.entity.v1.IntegrityTags tags = 7;
   // The source (a probe, a panelist, a connector, a manual edit) (14 §3).
   engenox.entity.v1.ProvenanceRef provenance = 8;
   // When the event entered the bus.
