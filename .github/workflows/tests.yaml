@@ -1,0 +1,66 @@
+# tests.yaml — the per-language UNIT-TEST gate (17 §4 + CLAUDE.md §7).
+#
+# The contract-gate compiled the spine; this gate runs the per-package + cross-language SUITES.
+# TS: vitest per workspace package (@engenox/contracts + the four A1 libs). Go: `go test ./...` on
+# the contract module. Python: the libs/kg RLS canary + the introspection gate (T15) — they skip on
+# no DATABASE_URL (the live canary is the CI/cell event per ADR-0007, mirroring T04's apply) so the
+# gate is green-or-skip locally + green-or-fail against the cell/testcontainer.
+#
+# The @engenox/cedar step IS the <2ms p99 dial-property CI gate (T14 — CLAUDE.md §7 "the Cedar <2ms
+# p99 benchmark is a CI test" + §8 "escalation-requires-3-axes"). cedar.test.ts runs `decide` over
+# the real @cedar-policy/cedar-wasm runtime + asserts the warm-eval p99 < 2.0ms (benchmarkDecideP99,
+# 23 §3m). The gate MECHANISM is NOT thinned (ADR-0007) — the real engine runs in CI.
+#
+# `needs: contract-gate` (the orchestrator). M0-thin: every package's suite runs every PR (no `nx
+# affected` targeting — see lint.yaml's candor note; the inferred-target config lands at T11).
+#
+# Cites: 25 §3; 17 §4; 23 §3m (the <2ms p99 CI test) + §3n (conformal coverage); CLAUDE.md §7 + §8;
+#        T14 (the Cedar exemplar) + T15 (the RLS exemplar); ADR-0007 (the gate is NOT thinned).
+
+name: tests
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: toolchain (mise — the single source per mise.toml; 29 §6)
+        uses: jdx/mise-action@v2
+
+      - name: install deps (the TS workspace — frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: "contracts surface tests (vitest — round-trip + exports + mvp-seal)"
+        working-directory: pkg/contracts
+        run: pnpm test   # vitest run over __tests__/.
+
+      - name: "Cedar dial gate + <2ms p99 (T14 — the real runtime warm-eval, 23 §3m)"
+        run: pnpm --filter @engenox/cedar test   # cedar.test.ts: decide() + benchmarkDecideP99 + the ledger.
+
+      - name: "kg truth-spine tests (the bi-temporal candor gate — 13 §3)"
+        run: pnpm --filter @engenox/kg test
+
+      - name: "crypto + verifier tests (the dual-canonical signature + the verifier seams)"
+        run: |
+          pnpm --filter @engenox/crypto test
+          pnpm --filter @engenox/verifier test
+
+      - name: "contracts surface tests (Go — go test ./... on generated/go)"
+        working-directory: pkg/contracts
+        run: go test ./...
+
+      # T15's RLS canary + the introspection gate DEFERRED — they fold into the product's own DB layer
+      # (the vertical slice's persistence stage owns libs/kg/test/, NOT a detached exemplar per the
+      # launch-first re-alignment). The pytest step re-appears when libs/kg/test/ lands against the
+      # product's Atlas-migrated schema. The Cedar + the libs kg TS suites above are the M0-thin spine.

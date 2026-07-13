@@ -1,0 +1,85 @@
+# contract-gate.yaml — THE FIRST GATE (the contract-compat gate, 25 §3 + CLAUDE.md §4/§7).
+#
+# The contract spine is the #1 anti-rework discipline: every cross-language type comes from
+# pkg/contracts via buf codegen (CLAUDE.md §4). This gate makes the spine PHYSICAL on every PR:
+#   buf lint (STANDARD)  →  buf breaking (FILE-level contract-compat vs the main baseline)  →
+#   buf generate (the 3-language codegen)  →  the three-language COMPILE (tsc strict · go
+#   build · mypy --strict)  →  the `test:py` runtime-import gate (the T02 candor guard).
+# Nothing else in the chain runs until this gate is green — the orchestrator gates lint / tests /
+# dependency-direction / security-scan / watchdog on `needs: contract-gate`.
+#
+# The `test:py` round-trip is the T02 candor defect made a gate: mypy NEVER imports, so a
+# gencode↔protobuf-runtime skew (gencode 7.35.1 emitted by the remote plugin, runtime pinned
+# >=7.35) is mypy-GREEN-but-import-RAISES (ValidateProtobufRuntimeVersion). py-roundtrip imports
+# every *_pb2 under the runtime, so the skew RAISES the gate, not the deploy (CLAUDE.md §12).
+#
+# Triggered `workflow_call` — the single entry is ci-orchestrator.yaml; this is a reusable workflow
+# (T06 §Files: "All other workflows depend on this gate's success (`needs: contract-gate`)").
+#
+# Cites: 25 §3 (the contract-compat gate fires for the first time); 17 §4 (the CI gate chain);
+#        CLAUDE.md §4 (contract-spine-first) + §7 (the gate chain); 24 §6 (generated-artifact
+#        discipline); T02 (the contract package + the py-roundtrip guard); ADR-0001 (the Buf pin).
+
+name: contract-gate
+
+on:
+  workflow_call:        # the orchestrator is the single entry; reusable by composition.
+  workflow_dispatch:    # manual re-run from the Actions UI (a per-gate retry without the chain).
+
+permissions:
+  contents: read
+
+jobs:
+  contract-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history — buf breaking resolves the main baseline (origin/main).
+
+      - name: toolchain (mise — the single source per mise.toml; 29 §6)
+        uses: jdx/mise-action@v2   # installs mise + provisions node/pnpm/go/python/uv/buf + the Go codegen plugins.
+
+      - name: install deps (pnpm workspace — frozen lockfile; the gate proves the lock is in sync)
+        run: pnpm install --frozen-lockfile
+
+      # Materialize the local `main` ref the buf breaking `branch=main` against-input resolves. A
+      # pull_request checkout materializes the PR head, NOT refs/heads/main; fetch-depth:0 gives us
+      # refs/remotes/origin/main, and `git update-ref` creates the local branch ref from it. NO
+      # `|| true` (candor: if origin/main is genuinely absent the gate fails loudly). On push-to-main
+      # the comparison is vacuously green (HEAD == origin/main) — the PR run is where breaking is
+      # meaningful; the push run is a benign re-confirm.
+      - name: main baseline ref for buf breaking
+        run: git update-ref refs/heads/main refs/remotes/origin/main
+
+      - name: buf generate (the 3-language codegen — TS/Go/Python)
+        working-directory: pkg/contracts
+        run: pnpm gen   # buf generate + scripts/ensure-pyinit.mjs (the PEP-420 markers mypy needs).
+
+      - name: buf lint (STANDARD — 24 §2)
+        working-directory: pkg/contracts
+        run: pnpm lint   # buf lint
+
+      - name: buf breaking (FILE-level contract-compat vs main — the 25 §3 gate)
+        working-directory: pkg/contracts
+        run: buf breaking --against "../../.git#branch=main,subdir=pkg/contracts"
+        # ../../.git resolves to the repo root from pkg/contracts; branch=main is the baseline
+        # materialized above. The package.json `breaking` dev script uses the SAME against-input for
+        # local dev (where local main already exists); CI materializes origin/main into the ref.
+
+      - name: tsc --noEmit (the TS contract surface compiles strict — CLAUDE.md §6)
+        working-directory: pkg/contracts
+        run: pnpm build   # tsc --noEmit over __tests__/ + generated/ts/
+
+      - name: go build ./... (the Go contract surface — generated/go against go.mod)
+        working-directory: pkg/contracts
+        run: go build ./...
+
+      - name: mypy --strict (the Python contract surface — generated/python)
+        working-directory: pkg/contracts
+        run: uv run mypy --strict generated/python   # uv run auto-syncs the pkg/contracts env (protobuf runtime).
+
+      - name: 'python round-trip (the runtime-import gate — T02 candor guard)'
+        working-directory: pkg/contracts
+        run: pnpm test:py   # uv run python scripts/py-roundtrip.py — imports every *_pb2 under the runtime.

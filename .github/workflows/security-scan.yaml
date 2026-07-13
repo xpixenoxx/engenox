@@ -1,0 +1,44 @@
+# security-scan.yaml — Trivy (the repo + image vuln scan) + the secret scan (gitleaks).
+#
+# Always runs behind the contract gate (`needs: contract-gate` per the orchestrator). Does NOT depend
+# on the changed services — a secret or a CVE is a finding regardless of which package the PR
+# touched (T06 §Files: "Always runs"). Suppressions, if any, cite a doc-pointer + a reason; a bare
+# `# trivy-ignore` / a `# gitleaks:allow` is a watchdog category-4 hit (T06 §Notes).
+#
+# Cites: 17 §4 (the CI gate chain); CLAUDE.md §7 (Trivy SBOM + secret-scan); ADR-0001 (Trivy); T06.
+#        Pin policy: the @vNN tags are Renovate-managed (no `@latest` / `@main` — watchdog cat-1).
+
+name: security-scan
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # gitleaks scans the full history (a secret in an old commit is still a leak).
+
+      # Trivy filesystem scan — HIGH/CRITICAL vulns in the repo's deps + manifests. The `.trivyignore`
+      # (if it ever exists) cites each ignore with a doc-pointer; a bare ignore is a watchdog hit.
+      - name: "Trivy fs scan (HIGH/CRITICAL — the repo + the dep manifests)"
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+      # gitleaks — the secret scan over the full git history. A fixture secret in tools/lint-fixtures
+      # is the negative test that asserts it fires; the gitleaks config allowlists ONLY the fixture.
+      - name: "gitleaks (the secret scan over the full history)"
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

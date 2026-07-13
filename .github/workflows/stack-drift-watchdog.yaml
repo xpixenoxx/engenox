@@ -1,0 +1,53 @@
+# stack-drift-watchdog.yaml — the THIN skeleton of the stack-drift watchdog (CLAUDE.md §8).
+#
+# T07 OWNS the FULL watchdog (the 5 categories in docs/enforcement/STACK_DRIFT_WATCHDOG.md — the
+# stack-swap, the stale-API, the contract-spine, the candor-floor/security, the AGE↔PG compat). T06
+# ships the SKELETON: a real, non-vacuous check of the M0-relevant headline rules so the gate is a
+# gate (not an `echo + exit 0` placeholder — that is the CLAUDE.md §12 candor breach). The thin rules
+# here are the subset that is BOTH M0-meaningful AND provably-low-noise; T07 expands to the full set.
+#
+# The M0-thin checks (tools/check-stack-drift.{sh,ps1}):
+#   1. NO `@latest` / `@main` action pins in .github/workflows/  →  every action is a pinned tag.
+#   2. NO `alloydb` in infra/  →  ADR-0003 (self-managed Postgres via CNPG; AlloyDB has no AGE).
+#   3. NO `warpstream` in tracked source  →  ADR-0004 (AutoMQ is the bus target; WarpStream→Confluent→IBM).
+# `needs: contract-gate` (the orchestrator). The watchdog is a SIBLING gate to lint (T06 §Notes).
+#
+# Cites: CLAUDE.md §8 (the stack-drift watchdog); docs/enforcement/STACK_DRIFT_WATCHDOG.md;
+#        ADR-0003 (CNPG, not AlloyDB) + ADR-0004 (AutoMQ, not WarpStream); T06 (the skeleton) + T07.
+
+name: stack-drift-watchdog
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stack-drift-watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: "the thin watchdog (no @latest actions · no alloydb · no warpstream — T07 expands the full 5-cat list)"
+        run: |
+          set -e
+          fail=0
+          # 1. NO @latest / @main action pins (CLAUDE.md §8 cat-1: an unpinned action is a supply-chain risk + an unratified swap).
+          if grep -RnE 'uses: .*@(latest|main)\b' .github/workflows/; then
+            echo "FAIL: an action is pinned @latest/@main (pin a @vNN tag)."; fail=1
+          fi
+          # 2. NO alloydb in tracked infra (ADR-0003 — self-managed Postgres via CNPG; AlloyDB has no AGE).
+          if git grep -nI 'alloydb' -- 'infra/**' 2>/dev/null; then
+            echo "FAIL: 'alloydb' appears in infra/ (ADR-0003 forbids it)."; fail=1
+          fi
+          # 3. NO warpstream in tracked source (ADR-0004 — AutoMQ is the bus target; WarpStream→Confluent→IBM).
+          if git grep -nI 'warpstream' -- ':!docs/' ':!adr/' 2>/dev/null; then
+            echo "FAIL: 'warpstream' appears in tracked source (ADR-0004 — AutoMQ is the target)."; fail=1
+          fi
+          if [ "$fail" -ne 0 ]; then exit 1; fi
+          echo "thin watchdog: clean (no @latest actions · no alloydb · no warpstream)."

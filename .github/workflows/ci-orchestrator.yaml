@@ -1,0 +1,97 @@
+# ci-orchestrator.yaml — the SINGLE ENTRY for the gate chain (T06 §Files: "the top-level workflow
+# that calls the gate chain in order + reports the gate status").
+#
+# GitHub Actions has no native cross-workflow `needs:` — the gate-order is expressed by making each
+# gate a REUSABLE workflow (`on: workflow_call`) called from THIS orchestrator in `needs:` order:
+#   contract-gate (the root, no needs)  →  lint / tests / dependency-direction / security-scan /
+#   stack-drift-watchdog  (each `needs: contract-gate`, run in parallel once the spine is green)  →
+#   gate-status  (needs ALL six; `if: always()`; the single merge-or-block candor-floor status).
+#
+# The contract gate is the FIRST gate, always — the architecture's #1 anti-rework discipline
+# (CLAUDE.md §4) is enforced by making the contract compile + buf breaking the gate every other gate
+# waits on. If the contracts don't compile, nothing else runs (T06 §Notes — "this is correct, not a
+# waste"). `gate-status` is the branch-protection required check: pass/fail, no "substantially done"
+# middle state (the candor floor in CI, CLAUDE.md §12 + DEFINITION_OF_DONE.md).
+#
+# M0-thin targeting: every gate runs on EVERY PR (no `nx affected` / `paths-ignore`). A vacuous skip
+# at 5 packages is the §12 candor breach; the inferred-target config lands at T11 — see lint.yaml.
+#
+# Cites: 25 §3; 17 §4 (the CI gate chain); 24 §8 (nx-targeted CI, post-M0); CLAUDE.md §7 (the chain) +
+#        §12 (candor floor); T06 (the orchestrator + the gate-status candor surface); ADR-0007.
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Reusable workflows run on the caller's runner context; secrets + GITHUB_TOKEN are inherited.
+# `concurrency` cancels a superseded run on the same ref (a force-push wastes the prior gate cycle).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract-gate:
+    uses: ./.github/workflows/contract-gate.yaml
+    # the root — NO `needs:` (asserted by tools/assert-gate-order.{sh,ps1}).
+
+  lint:
+    needs: contract-gate
+    uses: ./.github/workflows/lint.yaml
+
+  tests:
+    needs: contract-gate
+    uses: ./.github/workflows/tests.yaml
+
+  dependency-direction:
+    needs: contract-gate
+    uses: ./.github/workflows/dependency-direction.yaml
+
+  security-scan:
+    needs: contract-gate
+    uses: ./.github/workflows/security-scan.yaml
+    secrets: inherit   # gitleaks reads secrets.GITHUB_TOKEN from the caller's context.
+
+  stack-drift-watchdog:
+    needs: contract-gate
+    uses: ./.github/workflows/stack-drift-watchdog.yaml
+
+  # gate-status — the candor-floor aggregate. `if: always()` so it runs even when an upstream gate
+  # failed (otherwise a downstream-skip would mask the failure). It asserts every gate's `result` is
+  # `success`; a `skipped` (a downstream gate skipped because contract-gate failed) is NOT success —
+  # the PR is BLOCKED, not "partially green". This is the single merge-or-block status. Cite: T06 §Tests.
+  gate-status:
+    needs: [contract-gate, lint, tests, dependency-direction, security-scan, stack-drift-watchdog]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: "the candor floor — each gate pass/fail, the aggregate merge-or-block (no middle state)"
+        run: |
+          set -u
+          fail=0
+          check () {
+            local g="$1" r="$2"
+            printf '%-22s %s\n' "$g" "$r"
+            if [ "$r" != "success" ]; then
+              fail=1
+            fi
+          }
+          check contract-gate        "${{ needs.contract-gate.result }}"
+          check lint                  "${{ needs.lint.result }}"
+          check tests                 "${{ needs.tests.result }}"
+          check dependency-direction  "${{ needs.dependency-direction.result }}"
+          check security-scan         "${{ needs.security-scan.result }}"
+          check stack-drift-watchdog   "${{ needs.stack-drift-watchdog.result }}"
+          echo "---"
+          if [ "$fail" -eq 1 ]; then
+            echo "GATE STATUS: BLOCKED — one or more gates are not success (a skipped downstream gate is a block)"
+            exit 1
+          fi
+          echo "GATE STATUS: MERGEABLE — all six gates success"

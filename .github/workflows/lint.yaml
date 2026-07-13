@@ -1,0 +1,49 @@
+# lint.yaml — the per-language FORMAT + LINT gate (24 §8 per-language; CLAUDE.md §7).
+#
+# Biome 2 (TS lint + format — ADR-0001 replaces ESLint+Prettier) · Ruff (Python — ADR-0001) ·
+# golangci-lint (Go, incl. the depguard direction-lint — 29 §6). The TS deps are installed by the
+# workspace `pnpm install`; uv syncs the Python env. `needs: contract-gate` (the orchestrator
+# expresses it) — nothing lints until the contract spine compiles, so a contract-broken PR does not
+# waste a lint cycle on a tree that can't type (24 §4).
+#
+# M0-thin targeting: NO `nx affected` / `paths-ignore` here. A vacuous `nx affected --target=lint`
+# green at 5 packages is the CLAUDE.md §12 candor breach (a gate that ran nothing but reports green);
+# the inferred-target config (nx `plugins` + per-package `project.json`) lands at T11 when the
+# service package count makes per-PR-full-lint expensive. Until then every gate runs real checks on
+# every PR — the ADR-0007-allowed thinning is of CADENCE+SCALE, never the gate mechanism.
+#
+# Cites: 17 §4 (the CI gate chain); CLAUDE.md §7 (the gate chain) + §8 (the stack-drift watchdog is
+#        a SIBLING, not this gate); 24 §8 (per-language lint); 29 §6 (the lint pins); ADR-0001.
+
+name: lint
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1   # lint needs only the working tree (no breaking baseline).
+
+      - name: toolchain (mise — the single source per mise.toml; 29 §6)
+        uses: jdx/mise-action@v2
+
+      - name: install deps (the TS workspace — frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Biome 2 (the TS/JSON lint + format check — ADR-0001; biome.json is the config)
+        run: pnpm exec biome check .   # formatter.enabled + linter.rules per biome.json (M0-thin rule set).
+
+      - name: Ruff (the Python lint — ADR-0001; respects .gitignore so generated/ is skipped)
+        run: uv run ruff check .
+
+      - name: golangci-lint (the Go lint + depguard direction-lint — 29 §6; .golangci.yaml)
+        run: golangci-lint run --config .golangci.yaml ./pkg/contracts/...   # the root `lint:go` script.

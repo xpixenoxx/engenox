@@ -1,0 +1,53 @@
+# dependency-direction.yaml — the ARCHITECTURAL boundary gate (T03 in CI — CLAUDE.md §4/§7).
+#
+# The arrows between modules are ENFORCED, not advisory (24 §4):
+#   - dependency-cruise (TS — `.dependency-cruiser.cjs`)  +  lint-imports (Python — `.importlinter`)
+#     +  golangci-lint depguard (Go)  →  the cross-module arrows are a CI failure, not a review note.
+#   - tools/check-contract-graph.{sh,ps1}  →  the contract package is the only cross-language source.
+#   - tools/check-no-utils.{sh,ps1}    →  no `utils.ts` / `helpers.go` / `misc.py` (24 §3).
+#   - tools/check-lint-fires.{sh,ps1}  →  the negative fixtures (the forbidden-import, the no-utils,
+#     the boundary-fire) actually FIRE (a rule that never fires is a silent gate — CLAUDE.md §12).
+#
+# Distinct from lint.yaml: this gate enforces the MODULE-BOUNDARY arrows + the negative fixtures;
+# lint.yaml enforces the per-language FORMAT + STYLE. golangci-lint lives in lint.yaml (depguard is a
+# golangci linter configured in .golangci.yaml); this gate runs the TS + Python direction-lints only
+# + the tool-heaed negative fixtures, so the two gates don't duplicate the Go lint. `needs:
+# contract-gate` (the orchestrator).
+#
+# Cites: 17 §4; 24 §4 (arrows enforced); CLAUDE.md §4 (contract-spine-first) + §5 (the boundaries) +
+#        §7; T03 (the dependency-direction lint); docs/enforcement/STACK_DRIFT_WATCHDOG.md.
+
+name: dependency-direction
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-direction:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: toolchain (mise — the single source per mise.toml; 29 §6)
+        uses: jdx/mise-action@v2
+
+      - name: install deps (the TS workspace — frozen lockfile; dependency-cruise is a root devDep)
+        run: pnpm install --frozen-lockfile
+
+      - name: "the TS + contract-graph + no-utils + lint-fires boundary suite (T03)"
+        run: pnpm lint:boundary   # dependency-cruise + the three tools/check-* twins (see root package.json).
+
+      - name: "the Python import-direction lint (lint-imports — .importlinter contract)"
+        run: pnpm lint:py   # uv run lint-imports.
+
+      # T15's RLS static gate (tools/check-rls-policies.{sh,ps1}) is deferred — it folds into the
+      # product's own DB layer (the vertical slice's persistence stage owns the RLS migration + the
+      # policy + the canary test, NOT a detached exemplar per the launch-first re-alignment). The
+      # gate is re-wired there + this step re-appears when libs/kg/policies/ + libs/kg/test/ land.
