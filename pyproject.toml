@@ -10,7 +10,7 @@ requires-python = ">=3.13"
 # language contract surface, 24 §6). T12 adds "services/measurement"; T15 adds "libs/kg".
 # `uv sync` editable-installs the contract package so `import engenox.entity.v1.entity_pb2`
 # resolves without a manual PYTHONPATH (the measurement tier consumes the published wheel).
-members = ["pkg/contracts"]
+members = ["pkg/contracts", "libs/kg"]
 
 # the Python dev toolchain. mypy lives HERE (it's a pip package, not a mise standalone —
 # the ticket's "mise pins mypy" wording is weak; this is the correct home). ruff is ALSO

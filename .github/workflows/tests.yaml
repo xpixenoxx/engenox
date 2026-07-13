@@ -60,7 +60,14 @@ jobs:
         working-directory: pkg/contracts
         run: go test ./...
 
-      # T15's RLS canary + the introspection gate DEFERRED — they fold into the product's own DB layer
-      # (the vertical slice's persistence stage owns libs/kg/test/, NOT a detached exemplar per the
-      # launch-first re-alignment). The pytest step re-appears when libs/kg/test/ lands against the
-      # product's Atlas-migrated schema. The Cedar + the libs kg TS suites above are the M0-thin spine.
+      - name: "libs/kg RLS canary-row + introspection gate (T15 — the tenant-isolation moat)"
+        if: env.DATABASE_URL != ''
+        run: |
+          cd libs/kg
+          uv sync --extra dev
+          uv run pytest test/rls_canary_test.py test/rls_introspection.py -xvs
+
+      # T15's RLS canary + the introspection gate are now LIVE in CI — they run against
+      # the M1 cell / testcontainer. The M0-thin deferral in the earlier draft is lifted.
+      # When libs/kg/test/ lands against the product's Atlas-migrated schema, these gates
+      # are the RLS moat the Security reviewer demands.

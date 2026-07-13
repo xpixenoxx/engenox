@@ -1,0 +1,53 @@
+# pyproject.toml — libs/kg Python test config (the RLS moat tests).
+#
+# The RLS canary-row + introspection tests (T15) run against the M1 cell's Postgres
+# (or a CI testcontainer pinned to the cell's PG17+AGE1.6.0+pgvector0.8.2 image).
+# M1+ the real assertion_view library lands here; M1-thin ships the test fixtures.
+#
+# Cites: 23 §3 (RLS-introspection + canary-row) · 15 §3 (tenant_id from JWT)
+#        · 13 §3 (assertion_view only path) · ADR-0003/0007.
+
+[project]
+name = "engenox-kg"
+version = "0.1.0"
+description = "The truth-spine typed access — RLS moat tests (M1-thin)"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+  "psycopg2-binary>=2.9",
+  "pytest>=8.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.15",
+  "mypy>=1.10",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-xvs --tb=short"
+filterwarnings = []
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+select = ["E", "F", "I", "W", "UP", "B", "C4", "T20"]
+ignore = ["T201"]  # print allowed in tests
+fixable = ["E", "F", "I", "W", "UP", "B"]
+unfixable = ["C4", "T20"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "psycopg2*"
+ignore_missing_imports = true
