@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@engenox/verifier/*": ["../../libs/verifier/ts/src/*"],
+      "@engenox/crypto/*": ["../../libs/crypto/ts/src/*"],
+      "@engenox/kg/*": ["../../libs/kg/ts/src/*"]
+    },
+    "outDir": "dist"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

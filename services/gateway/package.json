@@ -1,0 +1,35 @@
+{
+  "name": "@engenox/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The gateway — the only model-touching surface (CLAUDE.md §5). LiteLLM routing + six bounded seams + constrained decoding on Extract + verifier re-grounding + token-budget gate.",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "biome check --apply src/"
+  },
+  "dependencies": {
+    "hono": "^4.12.30",
+    "@hono/node-server": "^2.0.8",
+    "neverthrow": "^7.1.0",
+    "litellm": "^0.12.0",
+    "@mlc-ai/web-xgrammar": "^0.1.27",
+    "@bufbuild/protobuf": "^2.5.0",
+    "@engenox/contracts": "workspace:*",
+    "@engenox/verifier": "workspace:*",
+    "@engenox/kg": "workspace:*",
+    "@engenox/crypto": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "@biomejs/biome": "1.9.4",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,106 @@
+// measurement.proto - the MeasurementService contract: simple-SCM + DML +
+// EWMA/CUSUM foreign-change detector + signed corpus row.
+//
+// M4-thin: simple synthetic control method + difference-in-differences
+// + placeholder conformal + foreign-change detector, writes signed corpus row.
+
+syntax = "proto3";
+
+package engenox.service.v1;
+
+import "engenox/entity/v1/intervention.proto";
+import "engenox/entity/v1/integrity.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/engenox/contracts/generated/go/engenox/service/v1;servicev1";
+
+service MeasurementService {
+  // Starts a measurement window for an intervention (prerequisite: PR merged).
+  rpc StartMeasurement(StartMeasurementRequest) returns (StartMeasurementResponse);
+
+  // Records a measurement point (called periodically by Temporal activity).
+  rpc RecordMeasurement(RecordMeasurementRequest) returns (RecordMeasurementResponse);
+
+  // Gets the outcome with lift + CI + conformal coverage + foreign-change status.
+  rpc GetOutcome(GetOutcomeRequest) returns (GetOutcomeResponse);
+
+  // Lists outcomes for a tenant.
+  rpc ListOutcomes(ListOutcomesRequest) returns (ListOutcomesResponse);
+}
+
+message StartMeasurementRequest {
+  string tenant_id = 1;
+  string intervention_id = 2;
+  // The PR merge commit SHA (the treatment timestamp).
+  string merge_commit_sha = 3;
+  string idempotency_key = 4;
+}
+
+message StartMeasurementResponse {
+  string outcome_id = 1;
+  // The treatment timestamp (valid_time of the intervention).
+  google.protobuf.Timestamp treatment_time = 2;
+}
+
+message RecordMeasurementRequest {
+  string outcome_id = 1;
+  // The surface being measured.
+  string surface_id = 2;
+  // The metric value (e.g., impressions, clicks, position).
+  double value = 3;
+  // The timestamp this measurement was taken.
+  google.protobuf.Timestamp measured_at = 4;
+  // The idempotency key for this measurement point.
+  string idempotency_key = 5;
+}
+
+message RecordMeasurementResponse {
+  bool recorded = 1;
+  // True if the foreign-change detector fired (EWMA/CUSUM breach).
+  bool foreign_change_detected = 2;
+  string foreign_change_reason = 3;
+}
+
+message GetOutcomeRequest {
+  string outcome_id = 1;
+}
+
+message GetOutcomeResponse {
+  // The full outcome row (lift + CI + conformal + integrity tags).
+  engenox.entity.v1.Outcome outcome = 1;
+  // The conformal coverage diagnostic (even if placeholder).
+  ConformalCoverage coverage = 2;
+}
+
+message ConformalCoverage {
+  // The conformal prediction interval (placeholder in M4-thin).
+  double prediction_interval_low = 1;
+  double prediction_interval_high = 2;
+  // Coverage: how many of the last N intervals contained the true value.
+  int32 coverage_contained = 3;
+  int32 coverage_total = 4;
+  // The candor microcopy: "preliminary — calibration in flight" if placeholder.
+  string candor_microcopy = 5;
+}
+
+message ListOutcomesRequest {
+  string tenant_id = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListOutcomesResponse {
+  repeated OutcomeSummary outcomes = 1;
+  string next_page_token = 2;
+}
+
+message OutcomeSummary {
+  string outcome_id = 1;
+  string intervention_id = 2;
+  double point_estimate = 3;
+  double ci_low = 4;
+  double ci_high = 5;
+  int32 sample_count = 6;
+  engenox.entity.v1.ForeignChangeStatus foreign_change_status = 7;
+  google.protobuf.Timestamp created_at = 8;
+}

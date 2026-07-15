@@ -1,0 +1,118 @@
+// action.proto - the ActionService contract: the M3 hinge (25 §3 M3).
+//
+// The action layer is the ONLY place external side-effects happen (GitHub PR creation).
+// It owns the Cedar two-pass gate + the rule-based diff-review blocker + the allow-list-glob
+// + the dial ledger at `propose` (never auto-merge; 26 §6).
+// Thin = one trivial policy + one hard-coded allow-list-glob; NEVER thin the GATE MECHANISM.
+
+syntax = "proto3";
+
+package engenox.service.v1;
+
+import "engenox/entity/v1/intervention.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/engenox/contracts/generated/go/engenox/service/v1;servicev1";
+
+// Dial decision enum - the dial ledger records REFUSED escalations, never erases them.
+enum DialDecision {
+  DIAL_DECISION_UNSPECIFIED = 0;
+  // Default: propose only, customer merges their own PR (26 §6).
+  DIAL_DECISION_PROPOSE = 1;
+  // Escalation requested but REFUSED (axisCount < 3). Ledger records the refusal.
+  DIAL_DECISION_ESCALATION_REFUSED = 2;
+}
+
+// Proposal state enum.
+enum ProposalState {
+  PROPOSAL_STATE_UNSPECIFIED = 0;
+  PROPOSAL_STATE_OPEN = 1;
+  PROPOSAL_STATE_MERGED = 2;
+  PROPOSAL_STATE_CLOSED = 3;
+  PROPOSAL_STATE_FAILED = 4;
+}
+
+// Diff-review result (rule-based, no LLM).
+message DiffReviewResult {
+  bool blocked = 1;
+  repeated string reasons = 2;
+  // The allow-list-glob that was matched (or "none").
+  string matched_glob = 3;
+}
+
+// The Action service - the external-side-effect boundary.
+// Every mutating activity carries a typed IdempotencyKey (CI-blocked, CLAUDE.md §8).
+service ActionService {
+  // Proposes an intervention as a GitHub PR. The dial is at `propose` (default DENY escalation).
+  // The allow-list-glob + diff-review blocker + Cedar two-pass gate run before PR creation.
+  rpc ProposeIntervention(ProposeInterventionRequest) returns (ProposeInterventionResponse);
+
+  // Gets the status of a proposed intervention (PR URL, merge status, dial ledger).
+  rpc GetProposalStatus(GetProposalStatusRequest) returns (GetProposalStatusResponse);
+
+  // Lists proposals for a tenant with filters.
+  rpc ListProposals(ListProposalsRequest) returns (ListProposalsResponse);
+}
+
+// Request to propose an intervention.
+message ProposeInterventionRequest {
+  string tenant_id = 1;
+  // The intervention params to propose (schema_json_ld / content_brief / brand_card_field).
+  engenox.entity.v1.InterventionParams params = 2;
+  // The conflict this intervention targets (for back-pointer integrity).
+  string conflict_id = 3;
+  // The idempotency key (REQUIRED - mutation without one is a watchdog hit).
+  string idempotency_key = 4;
+  // The GitHub repo to open the PR against.
+  string github_repo = 5;
+  // The base branch.
+  string base_branch = 6;
+}
+
+// Proposal response: PR URL + dial ledger entry + Cedar audit trail.
+message ProposeInterventionResponse {
+  string proposal_id = 1;
+  string pr_url = 2;
+  // The dial decision: PROPOSE (default), ESCALATION_REFUSED (3 axes not met).
+  DialDecision dial_decision = 3;
+  // The Cedar audit trail (two-pass: structural + isAuthorized).
+  repeated string cedar_audit = 4;
+  // Diff-review blocker result (rule-based, not LLM).
+  DiffReviewResult diff_review = 5;
+}
+
+// Get proposal status request.
+message GetProposalStatusRequest {
+  string proposal_id = 1;
+}
+
+message GetProposalStatusResponse {
+  ProposalState state = 1;
+  string pr_url = 2;
+  DialDecision dial_decision = 3;
+  repeated string cedar_audit = 4;
+  DiffReviewResult diff_review = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+// List proposals request.
+message ListProposalsRequest {
+  string tenant_id = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListProposalsResponse {
+  repeated ProposalSummary proposals = 1;
+  string next_page_token = 2;
+}
+
+message ProposalSummary {
+  string proposal_id = 1;
+  string conflict_id = 2;
+  string pr_url = 3;
+  ProposalState state = 4;
+  DialDecision dial_decision = 5;
+  google.protobuf.Timestamp created_at = 6;
+}

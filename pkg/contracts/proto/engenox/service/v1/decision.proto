@@ -1,0 +1,63 @@
+// decision.proto - the DecisionService contract: the AtlasCycle composes through this.
+//
+// The decision layer takes perception outputs (conflicts) + brand truth
+// and proposes interventions via the Planner (Adjudicate + Draft + Critique seams).
+// M3-thin: typed plan DAG, one real activity.
+
+syntax = "proto3";
+
+package engenox.service.v1;
+
+import "engenox/entity/v1/brand.proto";
+import "engenox/entity/v1/intervention.proto";
+import "engenox/service/v1/gateway.proto"; // for CritiqueRequest/Response types
+
+option go_package = "github.com/engenox/contracts/generated/go/engenox/service/v1;servicev1";
+
+service DecisionService {
+  // Proposes interventions for a set of conflicts (the Planner path).
+  // M3-thin: single activity that calls Adjudicate -> Draft -> Critique for each conflict.
+  rpc ProposeInterventions(ProposeInterventionsRequest) returns (ProposeInterventionsResponse);
+
+  // Gets the decision trace for debugging/audit.
+  rpc GetDecisionTrace(GetDecisionTraceRequest) returns (GetDecisionTraceResponse);
+}
+
+message ProposeInterventionsRequest {
+  string tenant_id = 1;
+  // The conflicts to propose interventions for (from Perception).
+  repeated string conflict_ids = 2;
+  // The brand truth for this tenant (BrandCard).
+  engenox.entity.v1.BrandCard brand_card = 3;
+  // The idempotency key for this decision run.
+  string idempotency_key = 4;
+}
+
+message ProposeInterventionsResponse {
+  // The proposed interventions (one per conflict, may be empty if all rejected).
+  repeated ProposedIntervention interventions = 1;
+  // The trace ID for OTel correlation.
+  string trace_id = 2;
+}
+
+message ProposedIntervention {
+  string conflict_id = 1;
+  // The adjudicated conflict type + severity + explainer.
+  engenox.service.v1.AdjudicateResponse adjudicate = 2;
+  // The drafted params (schema_json_ld / content_brief / brand_card_field).
+  engenox.entity.v1.InterventionParams params = 3;
+  // The critique (cross-family Critic verdict + objections).
+  engenox.service.v1.CritiqueResponse critique = 4;
+  // True if the critique passed (verdict != VETO/DEMAND_REPLAN).
+  bool critique_passed = 5;
+}
+
+message GetDecisionTraceRequest {
+  string tenant_id = 1;
+  string trace_id = 2;
+}
+
+message GetDecisionTraceResponse {
+  // The full decision trace (adjudicate/draft/critique per conflict).
+  repeated ProposedIntervention interventions = 1;
+}

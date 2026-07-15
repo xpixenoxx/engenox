@@ -1,0 +1,27 @@
+Metadata-Version: 2.4
+Name: engenox-measurement
+Version: 0.1.0
+Summary: Engenox Measurement Service — M4-thin: SCM + DML + placeholder conformal + EWMA/CUSUM foreign-change detector + signed CIO corpus row
+Requires-Python: >=3.12
+Requires-Dist: fastapi>=0.115.0
+Requires-Dist: uvicorn[standard]>=0.34.0
+Requires-Dist: pydantic>=2.10.0
+Requires-Dist: pydantic-settings>=2.6.0
+Requires-Dist: httpx>=0.28.0
+Requires-Dist: clickhouse-connect>=0.8.0
+Requires-Dist: asyncpg>=0.29.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: numpy>=2.0.0
+Requires-Dist: scipy>=1.13.0
+Requires-Dist: pandas>=2.2.0
+Requires-Dist: statsmodels>=0.14.0
+Requires-Dist: scikit-learn>=1.6.0
+Requires-Dist: orjson>=3.10.0
+Requires-Dist: cryptography>=44.0.0
+Requires-Dist: ruff>=0.15.0
+Requires-Dist: mypy>=1.13.0
+Requires-Dist: pytest>=8.3.0
+Requires-Dist: pytest-asyncio>=0.24.0
+Requires-Dist: pytest-cov>=5.0.0
+Requires-Dist: connectrpc>=0.3.0
+Requires-Dist: hypercorn>=0.15.0

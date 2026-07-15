@@ -1,0 +1,82 @@
+// controlplane.proto - the control-plane service contract (24 §3).
+//
+// The control-plane orchestrates the closed loop: perception → decision → action → measurement.
+//
+// Cites: 11 §2 (the control-plane composes the AtlasCycle via the six seams); 09 (the control-plane
+// is the Temporal client that starts AtlasCycle); 24 §3 (services only called via generated gRPC client).
+
+syntax = "proto3";
+
+package engenox.service.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/engenox/contracts/generated/go/engenox/service/v1;servicev1";
+
+// The ControlPlane service - the Temporal client that starts and manages the AtlasCycle.
+// The control-plane NEVER touches a provider SDK (gateway is the only model-touching surface).
+// It calls the gateway's six seams via the generated gRPC client from gateway.proto.
+service ControlPlaneService {
+  // Starts the AtlasCycle for a tenant. The AtlasCycle is the closed-loop orchestration
+  // (perception → decision → action → measurement) that Temporal executes.
+  rpc StartAtlasCycle(StartAtlasCycleRequest) returns (StartAtlasCycleResponse);
+
+  // Gets the current status of a running AtlasCycle.
+  rpc GetAtlasCycleStatus(GetAtlasCycleStatusRequest) returns (GetAtlasCycleStatusResponse);
+
+  // Cancels a running AtlasCycle (e.g., tenant requested stop).
+  rpc CancelAtlasCycle(CancelAtlasCycleRequest) returns (CancelAtlasCycleResponse);
+}
+
+// Request to start a new AtlasCycle for a tenant.
+message StartAtlasCycleRequest {
+  string tenant_id = 1;
+  // The idempotency key for this cycle (Deduplication key at the Temporal level).
+  string idempotency_key = 2;
+  // Optional: specific surfaces to probe (empty = all active surfaces for tenant).
+  repeated string surface_ids = 3;
+  // Optional: brand card override for this cycle.
+  google.protobuf.Struct brand_card_override = 4;
+}
+
+// Response: returns the Temporal workflow ID.
+message StartAtlasCycleResponse {
+  string workflow_id = 1;
+  string run_id = 2;
+}
+
+// Request to get AtlasCycle status.
+message GetAtlasCycleStatusRequest {
+  string workflow_id = 1;
+}
+
+// AtlasCycle status response.
+message GetAtlasCycleStatusResponse {
+  enum Phase {
+    PHASE_UNSPECIFIED = 0;
+    PHASE_PERCEPTION_RUNNING = 1;
+    PHASE_DECISION_RUNNING = 2;
+    PHASE_ACTION_RUNNING = 3;
+    PHASE_MEASUREMENT_RUNNING = 4;
+    PHASE_COMPLETED = 5;
+    PHASE_FAILED = 6;
+    PHASE_CANCELLED = 7;
+  }
+  Phase phase = 1;
+  string current_activity = 2;
+  repeated string completed_surfaces = 3;
+  google.protobuf.Timestamp started_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+  string error_message = 6;
+}
+
+// Cancel request.
+message CancelAtlasCycleRequest {
+  string workflow_id = 1;
+  string reason = 2;
+}
+
+message CancelAtlasCycleResponse {
+  bool cancelled = 1;
+}
