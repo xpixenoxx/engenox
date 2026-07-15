@@ -107,6 +107,44 @@
   - **All gates pass**: vitest 117/117 (control-plane 4 + decision 1 + gateway 6 + temporal 8 + contracts 13 + cedar 10 + kg 13 + verifier 23 + crypto 11); Go build (action, perception); lint:boundary clean; check-no-utils clean; depcruiser no violations.
   - **Cedar p99 < 2ms**: verified by `libs/cedar/ts` benchmarkDecideP99 test (453ms warm-eval over 2000 calls; sub-ms p99).) | `services/action/internal/ledger/{ledger.go,m3_property_test.go,m3_security_test.go}` + `services/action/internal/diffreview/{reviewer.go,reviewer.ts}` + `services/action/internal/cedargate/gate.go` + `services/action/internal/server/server.go` + `services/action/main.go` + `services/temporal/__tests__/{replay.test.ts,atlas-cycle-integration.test.ts}` + `libs/cedar/ts/__tests__/cedar.test.ts` |
 | E30 | M3-thin checkpoint — AtlasCycle integration + dial mechanism + Temporal replay + CI gates | ✅ (2026-07-15. Committed 1a67785. M3-thin closure per ADR-0007 §32: the walking skeleton hinge with Temporal (MVP-cost self-hosted), AtlasCycle dry-run against golden fixtures, dial mechanism at `propose`, type-safe ConnectRPC across all 6 gateway seams, CIO corpus row with integrity_signature. All closure gates GREEN: contract-compat (buf lint + buf breaking + generate + tsc + go build + mypy + test:py) + RLS-introspection (pg_policies on 6 scoping tables) + canary-row RLS regression + idempotency re-execution + diff-review-blocker (non-overridable deny list) + dial property tests (3-axis + demote-on-alert + safety valve) + golden-probe regression + dep-direction lint + Trivy SBOM + secret-scan + Biome/Ruff/golangci-lint. Temporal integration tests skip when server unavailable (design per ADR-0007 M3-thin — Temporal self-hosted Postgres-backend IS the M3 substrate; local testcontainer or dev cell required for execution evidence). ThreeAxisEvaluator M3-thin = hardcoded all 3 cleared per ADR-0007 Thinning Rule: "Thin = content, scale, cadence. Never = gate mechanism" — the interface + DialGateEvaluator orchestration IS the mechanism preserved. R2 Object-Lock mirror deferred to thickening pass per ADR-0007 §31 + §37 (signature writes day 1 to Postgres; R2 mirror thickens later).) | `services/action/internal/ledger/*` + `services/action/internal/diffreview/*` + `services/action/internal/cedargate/*` + `services/action/internal/server/*` + `services/temporal/__tests__/*` + `libs/cedar/ts/__tests__/cedar.test.ts` + `pkg/contracts/generated/` |
+| **M3-VAL-01** | **M3 live Temporal validation — execute AtlasCycle + replay/durability suites against live Temporal substrate** | ⬜ **PENDING (VALIDATION DEBT)** — All M3-thin implementation gates GREEN, but Temporal integration/replay tests require live Temporal server (testcontainer or dev cell). No execution evidence yet. **MVP RELEASE CANDIDATE BLOCKED until this passes.** | N/A — validation execution, not implementation |
+
+---
+
+## M3 Status Summary (Explicit)
+
+| Category | Status | Notes |
+|---|---|---|
+| **M3 IMPLEMENTATION** | ✅ **COMPLETE / CHECKPOINTED** | E30 committed 1a67785; all code gates GREEN; walking skeleton wired end-to-end |
+| **M3 LIVE TEMPORAL VALIDATION** | ⏳ **PENDING (M3-VAL-01)** | AtlasCycle execution + replay/durability suites untested against live Temporal; requires testcontainer or dev cell |
+| **MVP RELEASE CANDIDATE** | 🚫 **BLOCKED** | Cannot clear readiness closures until M3-VAL-01 passes (Security autonomous-action gate + dial mechanism execution evidence) |
+
+---
+
+## Next: M4 — Measurement + CIO Corpus + WORM Tier (The Action Spine)
+
+| # | Artifact | Status | Path |
+|---|---|---|---|
+| E31 | M4-thin measurement service — SCM + DML + placeholder conformal + EWMA/CUSUM + signed corpus row to Postgres | ✅ (2026-07-15. Substantial implementation exists: corpus writer with ed25519 signatures; SCM estimator with integrity tags; DML cross-fitting estimator; placeholder conformal calibrator; EWMA/CUSUM foreign-change detector with integrity tags; FastAPI REST endpoints (`/estimate/scm`, `/estimate/dml`, `/detect/foreign-change`, `/calibrate/conformal`, `/corpus/write`, `/corpus/write-batch`, `/measurements/pipeline`); quarantine guard with auto-quarantine + human override + integrity tags. All source compiles. M4-thin scope per ADR-0007: mechanisms exist, R2/ClickHouse mirrors deferred to thickening.) | `services/measurement/src/**/*.py` |
+| E32 | M4-thin test suite — unit tests for estimators, detectors, corpus writer, API routes, quarantine guard | ✅ (2026-07-15. 82 tests pass: test_scm.py 12, test_dml.py 11, test_foreign_change.py 15, test_conformal.py 11, test_quarantine.py 10, test_corpus_writer.py 9, test_api.py 14) | `services/measurement/src/engenox/measurement/__tests__/*.py` |
+| E33 | M4-thin foreign-change-quarantine guard — detect + isolate foreign-change rows from corpus | ✅ (2026-07-15. `ForeignChangeQuarantineGuard` with EWMA/CUSUM detection, auto-quarantine, human override with reviewer/justification/timestamp, integrity tags for corpus rows. Tested: clean series allowed, foreign change quarantined, flagged-not-quarantined mode, insufficient data handled, override allows/rejects, integrity tags include quarantine status + reviewer + justification.) | `services/measurement/src/engenox/measurement/quarantine/guard.py` |
+| E34 | M4-thin measurement phase Temporal activity integration — full pipeline (estimate → write corpus) | ✅ (2026-07-15. `runMeasurementPipeline` activity in `services/temporal/src/activities/atlasCycleActivities.ts` calls `measurementClient.callRunMeasurementPipeline` which POSTs to `/measurements/pipeline` REST endpoint. Pipeline: SCM + DML → conformal → foreign change detection → quarantine check → signed corpus write if allowed.) | `services/temporal/src/activities/atlasCycleActivities.ts` |
+| E35 | M4-thin CI gate wiring — measurement service tests in CI | ✅ (2026-07-15. `.github/workflows/tests.yaml` includes measurement service test step with `uv run pytest src/engenox/measurement/__tests__/ -xvs`. Verified locally: all 82 tests pass, ruff clean, mypy strict (ignoring missing stubs).) | `.github/workflows/tests.yaml` |
+
+---
+
+## M4 Status Summary (Explicit)
+
+| Category | Status | Notes |
+|---|---|---|
+| **M4 IMPLEMENTATION (core)** | ✅ **COMPLETE** | Core estimators, detectors, corpus writer, API all implemented |
+| **M4 TESTS** | ✅ **COMPLETE** | 82 tests pass across 7 test modules |
+| **M4 QUARANTINE GUARD** | ✅ **COMPLETE** | Auto-quarantine + human override + integrity tags |
+| **M4 TEMPORAL INTEGRATION** | ✅ **COMPLETE** | `runMeasurementPipeline` activity wired to measurement REST client |
+| **M4 CI GATES** | ✅ **COMPLETE** | Measurement tests step in `tests.yaml` workflow |
+| **R2/ClickHouse MIRRORS** | ⚪ **VALIDLY_DEFERRED** | Per ADR-0007 Thinning Rule — thickening pass |
+| **THREE-SINKS RECONCILIATION** | ⚪ **VALIDLY_DEFERRED** | Per ADR-0007 — thickening pass |
+| **R2 RESTORE TEST** | ⚪ **VALIDLY_DEFERRED** | Per ADR-0007 — needs R2 mirror first |
 
 ## Operating rules for this build
 - Intelligence core is FROZEN — never re-litigate philosophy in docs 01–27.

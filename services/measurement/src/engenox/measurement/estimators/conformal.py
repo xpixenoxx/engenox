@@ -122,8 +122,8 @@ def apply_conformal_correction(
 
 
 def combine_estimators_conformal(
-    scm_result: EstimatorResult,
-    dml_result: EstimatorResult,
+    scm_result: EstimatorResult | None,
+    dml_result: EstimatorResult | None,
     alpha: float | None = None,
 ) -> dict[str, ConformalInterval]:
     """
