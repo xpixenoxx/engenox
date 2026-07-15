@@ -384,6 +384,10 @@ func TestM3Security_TenantIsolation(t *testing.T) {
 // ============================================================================
 // 14 §2: DB clone w/o KEK unintelligible; R2 clone w/o sig unverifiable.
 // CIO corpus rows carry integrity_signature for R2 verification.
+//
+// M3-thin: integrity_signature written to Postgres (tx authority) via libs/crypto.
+// R2 Object-Lock WORM mirror is DEFERRED to thickening pass per ADR-0007 §31 + §37.
+// infra/tofu/modules/r2/ is a placeholder (.keep only) — not yet applied.
 
 func TestM3Security_DualCanonicalTwoFenceIntegrity(t *testing.T) {
 	t.Run("CIO corpus row includes integrity_signature (Ed25519 over canonical JSON)", func(t *testing.T) {
@@ -394,8 +398,9 @@ func TestM3Security_DualCanonicalTwoFenceIntegrity(t *testing.T) {
 		// Verified in libs/crypto - quarterly rotation, envelope encryption
 	})
 
-	t.Run("R2 Object-Lock WORM enabled for corpus mirror", func(t *testing.T) {
-		// Verified in infra/tofu/modules/r2 - Object-Lock with retention
+	t.Run("R2 Object-Lock WORM mirror deferred to thickening (ADR-0007 §31)", func(t *testing.T) {
+		// infra/tofu/modules/r2/ is placeholder only; R2 mirror thickens later
+		// Signature writes day-1 to Postgres per ADR-0007: "the signature writes from day 1 (the R2 mirror thickens later)"
 	})
 }
 
