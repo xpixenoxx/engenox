@@ -10,7 +10,7 @@ References: 13 §4 (corpus), 26 §2.4 (integrity tags).
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -161,7 +161,7 @@ def detect_foreign_changes(
             cusum_signal=None,
             cusum_threshold=None,
             cusum_triggered=False,
-            detection_time=datetime.utcnow(),
+            detection_time=datetime.now(UTC),
             metadata={"reason": "insufficient data", "n_points": len(metric_series)},
         )
 
@@ -196,7 +196,7 @@ def detect_foreign_changes(
         cusum_signal=float(cusum_signal) if cusum_signal is not None else None,
         cusum_threshold=float(cusum_h),
         cusum_triggered=cusum_triggered,
-        detection_time=datetime.utcnow(),
+        detection_time=datetime.now(UTC),
         metadata={
             "series_length": len(metric_series),
             "series_mean": float(metric_series.mean()),

@@ -7,6 +7,12 @@ from fastapi.testclient import TestClient
 
 from engenox.measurement.api.main import app
 
+# Test headers for F1 (tenant from header) and F2 (idempotency key)
+TEST_HEADERS = {
+    "x-tenant-id": "test-tenant",
+    "idempotency-key": "test-idem-key-123",
+}
+
 
 class TestHealthEndpoint:
     """Tests for /v1/health endpoint."""
@@ -20,7 +26,7 @@ class TestHealthEndpoint:
         data = response.json()
         assert data["status"] == "healthy"
         assert data["service"] == "measurement"
-        assert "version" in data
+        assert "service_version" in data
 
 
 class TestSCMEstimation:
@@ -61,7 +67,7 @@ class TestSCMEstimation:
         }
 
         with TestClient(app) as client:
-            response = client.post("/v1/estimate/scm", json=request)
+            response = client.post("/v1/estimate/scm", json=request, headers=TEST_HEADERS)
 
         assert response.status_code == 200
         data = response.json()
@@ -77,7 +83,7 @@ class TestSCMEstimation:
         }
 
         with TestClient(app) as client:
-            response = client.post("/v1/estimate/scm", json=request)
+            response = client.post("/v1/estimate/scm", json=request, headers=TEST_HEADERS)
 
         # Should fail validation
         assert response.status_code == 422
@@ -106,7 +112,7 @@ class TestDMLEstimation:
         }
 
         with TestClient(app) as client:
-            response = client.post("/v1/estimate/dml", json=request)
+            response = client.post("/v1/estimate/dml", json=request, headers=TEST_HEADERS)
 
         assert response.status_code == 200
         data = response.json()
@@ -122,7 +128,7 @@ class TestDMLEstimation:
         }
 
         with TestClient(app) as client:
-            response = client.post("/v1/estimate/dml", json=request)
+            response = client.post("/v1/estimate/dml", json=request, headers=TEST_HEADERS)
 
         assert response.status_code == 422
 
@@ -140,7 +146,7 @@ class TestForeignChangeDetection:
         }
 
         with TestClient(app) as client:
-            response = client.post("/v1/detect/foreign-change", json=request)
+            response = client.post("/v1/detect/foreign-change", json=request, headers=TEST_HEADERS)
 
         assert response.status_code == 200
         data = response.json()
@@ -157,14 +163,16 @@ class TestConformalCalibration:
         request = {"estimate": 5.0, "se": 1.0, "alpha": 0.1, "n_calibration": 30}
 
         with TestClient(app) as client:
-            response = client.post("/v1/calibrate/conformal", json=request)
+            response = client.post("/v1/calibrate/conformal", json=request, headers=TEST_HEADERS)
 
         assert response.status_code == 200
         data = response.json()
         assert "lower" in data
         assert "upper" in data
         assert data["lower"] < 5.0 < data["upper"]
-        assert "THIN M4 PLACEHOLDER" in data["metadata"]["note"]
+        # F4 fix: candor_floor present
+        assert "candor_floor" in data
+        assert data["candor_floor"] == "alpha_carried_through_CI_present_never_zero_width_MVP"
 
 
 class TestCorpusWrite:
@@ -174,7 +182,6 @@ class TestCorpusWrite:
         """Corpus write fails without signing key configured."""
         request = {
             "intervention_id": "test-int",
-            "tenant_id": "test-tenant",
             "estimator": "scm",
             "lift": 0.05,
             "lift_ci_lower": 0.02,
@@ -183,8 +190,9 @@ class TestCorpusWrite:
             "integrity_tags": {"estimator": "scm"},
         }
 
+        headers = {**TEST_HEADERS, "idempotency-key": "test-idem-requires-key"}
         with TestClient(app) as client:
-            response = client.post("/v1/corpus/write", json=request)
+            response = client.post("/v1/corpus/write", json=request, headers=headers)
 
         # Returns 503 when signing key not configured
         assert response.status_code == 503
@@ -194,7 +202,6 @@ class TestCorpusWrite:
         """Corpus write accepts foreign change tags."""
         request = {
             "intervention_id": "test-int",
-            "tenant_id": "test-tenant",
             "estimator": "dml",
             "lift": 0.03,
             "lift_ci_lower": 0.01,
@@ -204,8 +211,9 @@ class TestCorpusWrite:
             "foreign_change_tags": {"foreign_change_detected": True, "change_type": "ewma"},
         }
 
+        headers = {**TEST_HEADERS, "idempotency-key": "test-idem-foreign-change-tags"}
         with TestClient(app) as client:
-            response = client.post("/v1/corpus/write", json=request)
+            response = client.post("/v1/corpus/write", json=request, headers=headers)
 
         # Still 503 (no key), but accepted foreign_change_tags
         assert response.status_code == 503
@@ -217,20 +225,19 @@ class TestMeasurementLifecycle:
     def test_start_measurement(self) -> None:
         """Start measurement returns outcome ID."""
         request = {
-            "tenant_id": "tenant-1",
             "intervention_id": "int-1",
             "merge_commit_sha": "abc123",
             "idempotency_key": "idem-1",
         }
 
         with TestClient(app) as client:
-            response = client.post("/v1/measurements/start", json=request)
+            response = client.post("/v1/measurements/start", json=request, headers=TEST_HEADERS)
 
         assert response.status_code == 200
         data = response.json()
         assert "outcome_id" in data
         assert "treatment_time" in data
-        assert "tenant-1" in data["outcome_id"]
+        assert "test-tenant" in data["outcome_id"]
         assert "int-1" in data["outcome_id"]
 
     def test_record_measurement(self) -> None:
@@ -243,7 +250,7 @@ class TestMeasurementLifecycle:
         }
 
         with TestClient(app) as client:
-            response = client.post("/v1/measurements/record", json=request)
+            response = client.post("/v1/measurements/record", json=request, headers=TEST_HEADERS)
 
         assert response.status_code == 200
         data = response.json()
@@ -252,7 +259,10 @@ class TestMeasurementLifecycle:
     def test_get_outcome_returns_placeholder(self) -> None:
         """Get outcome returns candid placeholder with microcopy."""
         with TestClient(app) as client:
-            response = client.get("/v1/measurements/outcome/test-outcome")
+            response = client.get(
+                "/v1/measurements/outcome/test-outcome",
+                headers={"x-tenant-id": "test-tenant"},
+            )
 
         assert response.status_code == 200
         data = response.json()
@@ -264,7 +274,10 @@ class TestMeasurementLifecycle:
     def test_list_outcomes_empty(self) -> None:
         """List outcomes returns empty list in thin mode."""
         with TestClient(app) as client:
-            response = client.get("/v1/measurements/outcomes?tenant_id=tenant-1")
+            response = client.get(
+                "/v1/measurements/outcomes",
+                headers={"x-tenant-id": "test-tenant"},
+            )
 
         assert response.status_code == 200
         data = response.json()
@@ -280,7 +293,6 @@ class TestBatchCorpusWrite:
             "rows": [
                 {
                     "intervention_id": f"int-{i}",
-                    "tenant_id": "tenant-1",
                     "estimator": "scm",
                     "lift": 0.05 * i,
                     "status": "ok",
@@ -291,7 +303,7 @@ class TestBatchCorpusWrite:
         }
 
         with TestClient(app) as client:
-            response = client.post("/v1/corpus/write-batch", json=request)
+            response = client.post("/v1/corpus/write-batch", json=request, headers=TEST_HEADERS)
 
         # Returns 503 when signing key not configured (M4-thin)
         assert response.status_code == 503

@@ -41,8 +41,9 @@ class Settings(BaseSettings):
     conformal_alpha: float = 0.1
     conformal_min_calibration: int = 30
 
-    # WORM signature (libs/crypto)
+    # WORM signature (libs/crypto) — F3: key rotation config
     signing_key_path: str | None = None  # PEM path; if None, generate ephemeral in dev
+    signing_key_rotation_days: int = 90  # F3: rotation period for Ed25519 key
 
     # Temporal (for activity heartbeats)
     temporal_address: str = "localhost:7233"

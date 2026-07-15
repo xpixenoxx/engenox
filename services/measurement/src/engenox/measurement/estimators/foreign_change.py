@@ -9,7 +9,7 @@ References: 15 §3 (WORM signature), 26 §4 (foreign change detector).
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -73,7 +73,7 @@ class ForeignChangeResult:
             "combined_signal": self.combined_signal.value,
             "reason": self.reason,
             "metadata": self.metadata,
-            "checked_at": datetime.utcnow().isoformat() + "Z",
+            "checked_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         }
 
 

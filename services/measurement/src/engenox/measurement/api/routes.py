@@ -1,12 +1,26 @@
-"""FastAPI routes for Measurement Service — M4-thin."""
+"""Measurement Service API Routes — M4-thin.
 
+FastAPI routes exposing SCM, DML, foreign change detection, conformal,
+quarantine, and signed corpus write endpoints.
+
+F1: tenant_id from X-Tenant-ID header (CLAUDE.md §8), never request body
+F2: Idempotency-Key header required on all mutations (CLAUDE.md §8)
+F3: Corpus row status reflects estimator truth (not hardcoded "ok")
+F4: Conformal CI responses include candor_floor field
+F5: Key rotation config in settings
+
+References: 13 §4 (corpus), 15 §3 (WORM signature), 26 §2.4 (integrity tags),
+26 §4 (foreign-change detector ships with loop), CLAUDE.md §8 (watchdog deny-list).
+"""
+
+import time
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
 
 # Import generated protobuf types for MeasurementService lifecycle
@@ -26,10 +40,46 @@ from engenox.measurement.estimators import (
 )
 from engenox.measurement.quarantine.guard import ForeignChangeQuarantineGuard
 
+# ---- Idempotency Store (M4-thin: in-process; M4-thicken: Redis/Postgres) ----
+
+_idempotency_store: dict[str, float] = {}  # key -> expiry timestamp (unix)
+IDEMPOTENCY_TTL_SECONDS = 86400  # 24 hours
+
+IDEMPOTENCY_KEY_REQUIRED = "Idempotency-Key header required (CLAUDE.md §8)"
+
+
+def _idempotency_check(key: str) -> bool:
+    """Check and reserve an idempotency key. Returns True if new, False if duplicate."""
+    now = time.time()
+    # Cleanup expired
+    expired = [k for k, v in _idempotency_store.items() if v < now]
+    for k in expired:
+        del _idempotency_store[k]
+    if key in _idempotency_store:
+        return False
+    _idempotency_store[key] = now + IDEMPOTENCY_TTL_SECONDS
+    return True
+
+
+# ---- Tenant ID Extraction (CLAUDE.md §8: tenant from JWT, never request body) ----
+
+async def _tenant_id_from_request(request: Request) -> str:
+    """Extract tenant_id from trusted header set by control-plane.
+    Control-plane validates JWT and sets X-Tenant-ID header.
+    """
+    tenant_id = request.headers.get("x-tenant-id")
+    if not tenant_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing X-Tenant-ID header (must be set by authenticated control-plane)"
+        )
+    return tenant_id
+
+
 router = APIRouter(prefix="/v1", tags=["measurement"])
 
 
-# ---- Request/Response Models ----
+# ---- Request/Response Models (tenant_id removed from bodies; F1 fix) ----
 
 class ScmRequest(BaseModel):
     treated_series: list[dict[str, Any]] = Field(
@@ -127,11 +177,11 @@ class ConformalResponse(BaseModel):
     n_calibration: int
     method: str
     metadata: dict[str, Any]
+    candor_floor: str  # F4 fix: always present
 
 
 class CorpusWriteRequest(BaseModel):
     intervention_id: str
-    tenant_id: str
     estimator: str
     lift: float
     lift_ci_lower: float | None = None
@@ -146,32 +196,102 @@ class CorpusWriteResponse(BaseModel):
     estimated_at: str
     signature: str
     payload_hash: str
+    candor_floor: str  # F4 fix
 
 
-# ---- Health ----
+class BatchCorpusWriteRequest(BaseModel):
+    rows: list[CorpusWriteRequest]
 
-@router.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "healthy", "service": "measurement", "version": "0.1.0"}
+
+class BatchCorpusWriteResponse(BaseModel):
+    written: int
+    estimated_at: str
+
+
+class HealthResponse(BaseModel):
+    status: str
+    service: str
+    service_version: str
+
+
+@router.get("/health", response_model=HealthResponse)
+async def health() -> HealthResponse:
+    """Health check endpoint with service version (F5 fix)."""
+    return HealthResponse(
+        status="healthy",
+        service="measurement",
+        service_version="0.1.0",
+    )
+
+
+# ---- Measurement Lifecycle (M4-thin) ----
+
+class StartMeasurementRequest(BaseModel):
+    intervention_id: str
+    merge_commit_sha: str
+    idempotency_key: str = Field(..., description="Idempotency key for mutation (required)")
+
+
+class StartMeasurementResponse(BaseModel):
+    outcome_id: str
+    treatment_time: str  # ISO 8601
+
+
+class RecordMeasurementRequest(BaseModel):
+    outcome_id: str
+    surface_id: str
+    value: float
+    measured_at: str | None = None  # ISO 8601, defaults to now
+    idempotency_key: str = Field(..., description="Idempotency key for mutation (required)")
+
+
+class RecordMeasurementResponse(BaseModel):
+    recorded: bool
+    foreign_change_detected: bool
+    foreign_change_reason: str
+
+
+class OutcomeResponse(BaseModel):
+    outcome_id: str
+    intervention_id: str
+    point_estimate: float
+    ci_low: float
+    ci_high: float
+    sample_count: int
+    foreign_change_status: int
+    integrity_tags: dict[str, Any]
+    conformal_coverage: dict[str, Any] | None = None
+
+
+class ListOutcomesResponse(BaseModel):
+    outcomes: list[OutcomeResponse]
+    next_page_token: str
 
 
 # ---- SCM Estimation ----
 
 @router.post("/estimate/scm", response_model=ScmResponse)
-async def scm_estimate(request: ScmRequest) -> ScmResponse:
+async def scm_estimate(request: Request, body: ScmRequest) -> ScmResponse:
     """
     Synthetic Control Method estimation.
 
-    Constructs a weighted combination of control units matching the
-    treated unit's pre-intervention trajectory.
+    F1: tenant_id from X-Tenant-ID header (control-plane validated JWT).
+    F2: Idempotency-Key header required for mutation.
     """
+    tenant_id = await _tenant_id_from_request(request)
+    idem_key = request.headers.get("idempotency-key") or request.headers.get("Idempotency-Key")
+    if not idem_key:
+        raise HTTPException(status_code=400, detail=IDEMPOTENCY_KEY_REQUIRED)
+    if not _idempotency_check(f"scm:{tenant_id}:{idem_key}"):
+        raise HTTPException(status_code=409, detail="Duplicate idempotency key")
+
     # Convert to pandas
-    treated_df = pd.DataFrame(request.treated_series)
+    treated_df = pd.DataFrame(body.treated_series)
     treated_df["timestamp"] = pd.to_datetime(treated_df["timestamp"])
     treated_series = treated_df.set_index("timestamp")["value"]
 
     control_dfs = {}
-    for name, data in request.control_panel.items():
+    for name, data in body.control_panel.items():
         df = pd.DataFrame(data)
         df["timestamp"] = pd.to_datetime(df["timestamp"])
         control_dfs[name] = df.set_index("timestamp")["value"]
@@ -186,9 +306,9 @@ async def scm_estimate(request: ScmRequest) -> ScmResponse:
     result: SCMResult = estimate_scm(
         treated_series=treated_aligned,
         control_panel=control_aligned,
-        treatment_start=request.treatment_start_index,
-        min_pre_periods=request.min_pre_periods,
-        min_controls=request.min_controls,
+        treatment_start=body.treatment_start_index,
+        min_pre_periods=body.min_pre_periods,
+        min_controls=body.min_controls,
     )
 
     return ScmResponse(
@@ -207,20 +327,28 @@ async def scm_estimate(request: ScmRequest) -> ScmResponse:
 # ---- DML Estimation ----
 
 @router.post("/estimate/dml", response_model=DmlResponse)
-async def dml_estimate(request: DmlRequest) -> DmlResponse:
+async def dml_estimate(request: Request, body: DmlRequest) -> DmlResponse:
     """
     Double Machine Learning estimation.
 
-    Uses cross-fitting with RandomForest for nuisance functions.
+    F1: tenant_id from X-Tenant-ID header.
+    F2: Idempotency-Key header required.
     """
+    tenant_id = await _tenant_id_from_request(request)
+    idem_key = request.headers.get("idempotency-key") or request.headers.get("Idempotency-Key")
+    if not idem_key:
+        raise HTTPException(status_code=400, detail=IDEMPOTENCY_KEY_REQUIRED)
+    if not _idempotency_check(f"dml:{tenant_id}:{idem_key}"):
+        raise HTTPException(status_code=409, detail="Duplicate idempotency key")
+
     result: DMLResult = estimate_dml(
-        outcome=pd.Series(request.outcome),
-        treatment=pd.Series(request.treatment),
-        covariates=pd.DataFrame(request.covariates),
-        n_folds=request.n_folds,
-        n_estimators=request.n_estimators,
-        max_depth=request.max_depth,
-        random_state=request.random_state,
+        outcome=pd.Series(body.outcome),
+        treatment=pd.Series(body.treatment),
+        covariates=pd.DataFrame(body.covariates),
+        n_folds=body.n_folds,
+        n_estimators=body.n_estimators,
+        max_depth=body.max_depth,
+        random_state=body.random_state,
     )
 
     return DmlResponse(
@@ -237,23 +365,31 @@ async def dml_estimate(request: DmlRequest) -> DmlResponse:
 # ---- Foreign Change Detection ----
 
 @router.post("/detect/foreign-change", response_model=ForeignChangeResponse)
-async def foreign_change(request: ForeignChangeRequest) -> ForeignChangeResponse:
+async def foreign_change(request: Request, body: ForeignChangeRequest) -> ForeignChangeResponse:
     """
     Detect foreign changes in time series using EWMA + CUSUM.
 
-    Safety-net detector that ships with the loop (26 §4).
+    F1: tenant_id from X-Tenant-ID header.
+    F2: Idempotency-Key header required.
     """
-    df = pd.DataFrame(request.series)
+    tenant_id = await _tenant_id_from_request(request)
+    idem_key = request.headers.get("idempotency-key") or request.headers.get("Idempotency-Key")
+    if not idem_key:
+        raise HTTPException(status_code=400, detail=IDEMPOTENCY_KEY_REQUIRED)
+    if not _idempotency_check(f"fc:{tenant_id}:{idem_key}"):
+        raise HTTPException(status_code=409, detail="Duplicate idempotency key")
+
+    df = pd.DataFrame(body.series)
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     df = df.set_index("timestamp").sort_index()
     series = df["value"]
 
     result: ForeignChangeResult = detect_foreign_change(
         series,
-        lambda_param=request.ewma_lambda,
-        ewma_threshold=request.ewma_threshold,
-        cusum_threshold=request.cusum_threshold,
-        cusum_drift=request.cusum_drift,
+        lambda_param=body.ewma_lambda,
+        ewma_threshold=body.ewma_threshold,
+        cusum_threshold=body.cusum_threshold,
+        cusum_drift=body.cusum_drift,
     )
 
     return ForeignChangeResponse(
@@ -276,21 +412,27 @@ async def foreign_change(request: ForeignChangeRequest) -> ForeignChangeResponse
     )
 
 
-# ---- Conformal Correction ----
+# ---- Conformal Calibration ----
 
 @router.post("/calibrate/conformal", response_model=ConformalResponse)
-async def conformal_calibrate(request: ConformalRequest) -> ConformalResponse:
+async def conformal_calibrate(request: Request, body: ConformalRequest) -> ConformalResponse:
     """
     Apply placeholder conformal correction to point estimate + SE.
 
-    THIN M4: asymptotic with conservative correction factor.
-    Thickening: proper split-conformal / CV+ with calibration set.
+    F4: response includes candor_floor field.
     """
+    tenant_id = await _tenant_id_from_request(request)
+    idem_key = request.headers.get("idempotency-key") or request.headers.get("Idempotency-Key")
+    if not idem_key:
+        raise HTTPException(status_code=400, detail=IDEMPOTENCY_KEY_REQUIRED)
+    if not _idempotency_check(f"conformal:{tenant_id}:{idem_key}"):
+        raise HTTPException(status_code=409, detail="Duplicate idempotency key")
+
     result: ConformalInterval = apply_conformal_correction(
-        estimate=request.estimate,
-        se=request.se,
-        alpha=request.alpha,
-        n_calibration=request.n_calibration,
+        estimate=body.estimate,
+        se=body.se,
+        alpha=body.alpha,
+        n_calibration=body.n_calibration,
     )
 
     return ConformalResponse(
@@ -300,22 +442,28 @@ async def conformal_calibrate(request: ConformalRequest) -> ConformalResponse:
         n_calibration=result.n_calibration,
         method=result.method,
         metadata=result.metadata,
+        candor_floor="alpha_carried_through_CI_present_never_zero_width_MVP",
     )
 
 
 # ---- Signed Corpus Write ----
 
 @router.post("/corpus/write", response_model=CorpusWriteResponse)
-async def write_corpus(request: CorpusWriteRequest) -> CorpusWriteResponse:
+async def write_corpus(request: Request, body: CorpusWriteRequest) -> CorpusWriteResponse:
     """
     Write a signed CIO corpus row.
 
-    Creates canonical payload, signs with ed25519 (libs/crypto),
-    and persists to Postgres. WORM signature binds the row
-    intervention outcome.
+    F1: tenant_id from X-Tenant-ID header (not body).
+    F2: Idempotency-Key header required.
+    F3: status reflects estimator state (not hardcoded "ok").
+    F4: response includes candor_floor field.
     """
-    import pathlib
-
+    tenant_id = await _tenant_id_from_request(request)
+    idem_key = request.headers.get("idempotency-key") or request.headers.get("Idempotency-Key")
+    if not idem_key:
+        raise HTTPException(status_code=400, detail=IDEMPOTENCY_KEY_REQUIRED)
+    if not _idempotency_check(f"corpus:{tenant_id}:{idem_key}"):
+        raise HTTPException(status_code=409, detail="Duplicate idempotency key")
 
     settings = get_settings()
     if not settings.signing_key_path:
@@ -325,50 +473,59 @@ async def write_corpus(request: CorpusWriteRequest) -> CorpusWriteResponse:
         )
 
     # Read signing key
-    key_path = pathlib.Path(settings.signing_key_path)
+    key_path = Path(settings.signing_key_path)
     if not key_path.exists():
         detail = f"Signing key not found: {settings.signing_key_path}"
         raise HTTPException(status_code=500, detail=detail)
     signing_key_pem = key_path.read_text()
 
+    # F3: Determine status from estimator integrity tags (not hardcoded "ok")
+    # If estimator is fallback/error, propagate through status
+    status = body.status
+    if "fallback_reason" in body.integrity_tags:
+        status = "fallback"
+    elif "error" in str(body.integrity_tags).lower():
+        status = "error"
+
     row = await create_signed_corpus_row(
-        intervention_id=request.intervention_id,
-        tenant_id=request.tenant_id,
-        estimator=request.estimator,
-        lift=request.lift,
-        lift_ci_lower=request.lift_ci_lower,
-        lift_ci_upper=request.lift_ci_upper,
-        status=request.status,
-        integrity_tags=request.integrity_tags,
+        intervention_id=body.intervention_id,
+        tenant_id=tenant_id,
+        estimator=body.estimator,
+        lift=body.lift,
+        lift_ci_lower=body.lift_ci_lower,
+        lift_ci_upper=body.lift_ci_upper,
+        status=status,
+        integrity_tags=body.integrity_tags,
         signing_key_pem=signing_key_pem,
-        foreign_change_tags=request.foreign_change_tags,
+        foreign_change_tags=body.foreign_change_tags,
     )
 
     # M4-thin: DB write is optional (may not have DB in dev)
     # Return row with metadata; actual persist via batch job
-    # Return row with metadata; actual persist via batch job
+    payload_hash = sha256(row.canonical_json.encode()).hexdigest()
     return CorpusWriteResponse(
         row_id=-1,  # placeholder — real ID from DB insert
         estimated_at=row.estimated_at,
         signature=row.signature.hex(),
-        payload_hash=sha256(row.canonical_json.encode()).hexdigest(),
+        payload_hash=payload_hash,
+        candor_floor="worm_ed25519_signature_present_MVP",
     )
 
 
 # ---- Batch Corpus Write ----
 
-class BatchCorpusWriteRequest(BaseModel):
-    rows: list[CorpusWriteRequest]
-
-
-class BatchCorpusWriteResponse(BaseModel):
-    written: int
-    estimated_at: str
-
-
 @router.post("/corpus/write-batch", response_model=BatchCorpusWriteResponse)
-async def write_corpus_batch(request: BatchCorpusWriteRequest) -> BatchCorpusWriteResponse:
+async def write_corpus_batch(
+    request: Request, body: BatchCorpusWriteRequest
+) -> BatchCorpusWriteResponse:
     """Write multiple signed corpus rows."""
+    tenant_id = await _tenant_id_from_request(request)
+    idem_key = request.headers.get("idempotency-key") or request.headers.get("Idempotency-Key")
+    if not idem_key:
+        raise HTTPException(status_code=400, detail=IDEMPOTENCY_KEY_REQUIRED)
+    if not _idempotency_check(f"corpus_batch:{tenant_id}:{idem_key}"):
+        raise HTTPException(status_code=409, detail="Duplicate idempotency key")
+
     settings = get_settings()
     if not settings.signing_key_path:
         raise HTTPException(
@@ -377,15 +534,22 @@ async def write_corpus_batch(request: BatchCorpusWriteRequest) -> BatchCorpusWri
         )
 
     rows = []
-    for req in request.rows:
+    for req in body.rows:
+        # F3: Determine status from estimator integrity tags
+        status = req.status
+        if "fallback_reason" in req.integrity_tags:
+            status = "fallback"
+        elif "error" in str(req.integrity_tags).lower():
+            status = "error"
+
         row = await create_signed_corpus_row(
             intervention_id=req.intervention_id,
-            tenant_id=req.tenant_id,
+            tenant_id=tenant_id,
             estimator=req.estimator,
             lift=req.lift,
             lift_ci_lower=req.lift_ci_lower,
             lift_ci_upper=req.lift_ci_upper,
-            status=req.status,
+            status=status,
             integrity_tags=req.integrity_tags,
             signing_key_pem=settings.signing_key_path,
             foreign_change_tags=req.foreign_change_tags,
@@ -401,64 +565,27 @@ async def write_corpus_batch(request: BatchCorpusWriteRequest) -> BatchCorpusWri
 
 # ---- Measurement Lifecycle (M4-thin) ----
 
-class StartMeasurementRequest(BaseModel):
-    tenant_id: str
-    intervention_id: str
-    merge_commit_sha: str
-    idempotency_key: str
-
-
-class StartMeasurementResponse(BaseModel):
-    outcome_id: str
-    treatment_time: str  # ISO 8601
-
-
-class RecordMeasurementRequest(BaseModel):
-    outcome_id: str
-    surface_id: str
-    value: float
-    measured_at: str | None = None  # ISO 8601, defaults to now
-    idempotency_key: str
-
-
-class RecordMeasurementResponse(BaseModel):
-    recorded: bool
-    foreign_change_detected: bool
-    foreign_change_reason: str
-
-
-class OutcomeResponse(BaseModel):
-    outcome_id: str
-    intervention_id: str
-    point_estimate: float
-    ci_low: float
-    ci_high: float
-    sample_count: int
-    foreign_change_status: int
-    integrity_tags: dict[str, Any]
-    conformal_coverage: dict[str, Any] | None = None
-
-
-class ListOutcomesRequest(BaseModel):
-    tenant_id: str
-    page_size: int = 50
-    page_token: str = ""
-
-
-class ListOutcomesResponse(BaseModel):
-    outcomes: list[OutcomeResponse]
-    next_page_token: str
-
-
 @router.post("/measurements/start", response_model=StartMeasurementResponse)
-async def start_measurement(request: StartMeasurementRequest) -> StartMeasurementResponse:
+async def start_measurement(
+    request: Request, body: StartMeasurementRequest
+) -> StartMeasurementResponse:
     """
     Start a measurement window for an intervention (PR merge).
 
     M4-thin: Creates a placeholder outcome ID with current timestamp.
     M4-thicken: Record treatment_time = PR merge time, start outcome row in DB.
+
+    F1 fix: tenant_id from X-Tenant-ID header (control-plane validated JWT).
+    F2 fix: Idempotency-Key required via header.
     """
-    outcome_id = f"{request.tenant_id}-{request.intervention_id}-outcome-{request.idempotency_key}"
+    tenant_id = await _tenant_id_from_request(request)
+    idem_key = request.headers.get("idempotency-key") or request.headers.get("Idempotency-Key")
+    if not idem_key:
+        raise HTTPException(status_code=400, detail=IDEMPOTENCY_KEY_REQUIRED)
+    if not _idempotency_check(f"start_measurement:{tenant_id}:{idem_key}"):
+        raise HTTPException(status_code=409, detail="Duplicate idempotency key")
+
+    outcome_id = f"{tenant_id}-{body.intervention_id}-outcome-{body.idempotency_key}"
     treatment_time = datetime.now(UTC).isoformat()
 
     return StartMeasurementResponse(
@@ -468,13 +595,25 @@ async def start_measurement(request: StartMeasurementRequest) -> StartMeasuremen
 
 
 @router.post("/measurements/record", response_model=RecordMeasurementResponse)
-async def record_measurement(request: RecordMeasurementRequest) -> RecordMeasurementResponse:
+async def record_measurement(
+    request: Request, body: RecordMeasurementRequest
+) -> RecordMeasurementResponse:
     """
     Record a measurement point for an outcome.
 
     M4-thin: Returns recorded=true with no foreign change detection.
     M4-thicken: Append to time series, run EWMA/CUSUM, update outcome.
+
+    F1 fix: tenant_id from X-Tenant-ID header.
+    F2 fix: Idempotency-Key required via header.
     """
+    tenant_id = await _tenant_id_from_request(request)
+    idem_key = request.headers.get("idempotency-key") or request.headers.get("Idempotency-Key")
+    if not idem_key:
+        raise HTTPException(status_code=400, detail=IDEMPOTENCY_KEY_REQUIRED)
+    if not _idempotency_check(f"record_measurement:{tenant_id}:{idem_key}"):
+        raise HTTPException(status_code=409, detail="Duplicate idempotency key")
+
     # M4-thin: just acknowledge
     return RecordMeasurementResponse(
         recorded=True,
@@ -484,12 +623,15 @@ async def record_measurement(request: RecordMeasurementRequest) -> RecordMeasure
 
 
 @router.get("/measurements/outcome/{outcome_id}", response_model=OutcomeResponse)
-async def get_outcome(outcome_id: str) -> OutcomeResponse:
+async def get_outcome(request: Request, outcome_id: str) -> OutcomeResponse:
     """
     Get the full outcome with lift + CI + conformal + foreign-change.
 
     M4-thin: Returns placeholder with candor microcopy.
+    F1 fix: tenant_id from X-Tenant-ID header (for auth check).
     """
+    await _tenant_id_from_request(request)  # auth check only
+
     # M4-thin: Return placeholder with honest candor
     return OutcomeResponse(
         outcome_id=outcome_id,
@@ -512,15 +654,17 @@ async def get_outcome(outcome_id: str) -> OutcomeResponse:
 
 @router.get("/measurements/outcomes", response_model=ListOutcomesResponse)
 async def list_outcomes(
-    tenant_id: str,
+    request: Request,
     page_size: int = 50,
     page_token: str = "",
 ) -> ListOutcomesResponse:
     """
     List outcomes for a tenant.
 
-    M4-thin: Returns empty list.
+    F1 fix: tenant_id from X-Tenant-ID header (not query param).
     """
+    await _tenant_id_from_request(request)  # auth check / tenant extraction
+
     return ListOutcomesResponse(
         outcomes=[],
         next_page_token="",
@@ -531,7 +675,6 @@ async def list_outcomes(
 
 class RunMeasurementPipelineRequest(BaseModel):
     """Request to run the full measurement pipeline for an intervention."""
-    tenant_id: str
     intervention_id: str
     # Pre-treatment outcome data
     treated_pre_series: list[dict[str, Any]]  # [{"timestamp": ISO8601, "value": float}]
@@ -566,31 +709,43 @@ class RunMeasurementPipelineResponse(BaseModel):
     "/measurements/pipeline", response_model=RunMeasurementPipelineResponse
 )
 async def run_measurement_pipeline(
-    request: RunMeasurementPipelineRequest,
+    request: Request,
+    body: RunMeasurementPipelineRequest,
 ) -> RunMeasurementPipelineResponse:
     """
     Run the full measurement pipeline for an intervention.
 
     Pipeline: SCM + DML estimation → Conformal calibration → Foreign change detection
     → Quarantine check → Signed corpus row write (if allowed).
+
+    F1 fix: tenant_id from X-Tenant-ID header (not body).
+    F2 fix: Idempotency-Key header required (not just body).
+    F3 fix: corpus status reflects estimator truth, not hardcoded "ok".
     """
+    tenant_id = await _tenant_id_from_request(request)
+    idem_key = request.headers.get("idempotency-key") or request.headers.get("Idempotency-Key")
+    if not idem_key:
+        raise HTTPException(status_code=400, detail=IDEMPOTENCY_KEY_REQUIRED)
+    if not _idempotency_check(f"pipeline:{tenant_id}:{idem_key}"):
+        raise HTTPException(status_code=409, detail="Duplicate idempotency key")
+
     settings = get_settings()
-    outcome_id = f"{request.tenant_id}-{request.intervention_id}-outcome-{request.idempotency_key}"
+    outcome_id = f"{tenant_id}-{body.intervention_id}-outcome-{body.idempotency_key}"
 
     # --- 1. SCM Estimation ---
     scm_result: dict[str, Any] | None = None
     try:
-        treated_df = pd.DataFrame(request.treated_pre_series + request.treated_post_series)
+        treated_df = pd.DataFrame(body.treated_pre_series + body.treated_post_series)
         treated_df["timestamp"] = pd.to_datetime(treated_df["timestamp"])
         treated_series = treated_df.set_index("timestamp")["value"]
 
         control_dfs = {}
-        for name, data in request.control_pre_panel.items():
+        for name, data in body.control_pre_panel.items():
             df = pd.DataFrame(data)
             df["timestamp"] = pd.to_datetime(df["timestamp"])
             control_dfs[name] = df.set_index("timestamp")["value"]
 
-        for name, data in request.control_post_panel.items():
+        for name, data in body.control_post_panel.items():
             df = pd.DataFrame(data)
             df["timestamp"] = pd.to_datetime(df["timestamp"])
             if name in control_dfs:
@@ -609,7 +764,7 @@ async def run_measurement_pipeline(
         scm_est = estimate_scm(
             treated_series=treated_aligned,
             control_panel=control_aligned,
-            treatment_start=request.treatment_start_index,
+            treatment_start=body.treatment_start_index,
         )
         scm_result = {
             "status": scm_est.status.value,
@@ -628,11 +783,11 @@ async def run_measurement_pipeline(
     # --- 2. DML Estimation ---
     dml_result: dict[str, Any] | None = None
     try:
-        if request.dml_outcome and request.dml_treatment and request.dml_covariates:
+        if body.dml_outcome and body.dml_treatment and body.dml_covariates:
             dml_est = estimate_dml(
-                outcome=request.dml_outcome,
-                treatment=request.dml_treatment,
-                covariates=request.dml_covariates,
+                outcome=body.dml_outcome,
+                treatment=[float(t) for t in body.dml_treatment],
+                covariates=body.dml_covariates,
             )
             dml_result = {
                 "status": dml_est.status.value,
@@ -680,8 +835,8 @@ async def run_measurement_pipeline(
     # --- 4. Foreign Change Detection ---
     foreign_change_result: dict[str, Any] | None = None
     try:
-        if request.foreign_change_series:
-            df = pd.DataFrame(request.foreign_change_series)
+        if body.foreign_change_series:
+            df = pd.DataFrame(body.foreign_change_series)
             df["timestamp"] = pd.to_datetime(df["timestamp"])
             df = df.set_index("timestamp").sort_index()
             series = df["value"]
@@ -712,8 +867,8 @@ async def run_measurement_pipeline(
     # --- 5. Quarantine Check ---
     quarantine_decision: dict[str, Any] | None = None
     try:
-        if request.foreign_change_series:
-            df = pd.DataFrame(request.foreign_change_series)
+        if body.foreign_change_series:
+            df = pd.DataFrame(body.foreign_change_series)
             df["timestamp"] = pd.to_datetime(df["timestamp"])
             df = df.set_index("timestamp").sort_index()
             series = df["value"]
@@ -740,11 +895,14 @@ async def run_measurement_pipeline(
     corpus_written = False
     corpus_row_id = None
 
-    should_write = (
-        quarantine_decision
-        and quarantine_decision.get("allowed", True)
-        and settings.signing_key_path
-    )
+    # F3: Determine if we should write based on quarantine AND estimator status
+    scm_ok = scm_result and scm_result.get("status") == "ok"
+    dml_ok = dml_result and dml_result.get("status") == "ok"
+    estimator_ok = scm_ok or dml_ok
+    quarantine_allowed = quarantine_decision and quarantine_decision.get("allowed", True)
+    has_signing_key = settings.signing_key_path is not None
+
+    should_write = estimator_ok and quarantine_allowed and has_signing_key
 
     if should_write and settings.signing_key_path:
         try:
@@ -772,18 +930,26 @@ async def run_measurement_pipeline(
                 if ci_upper is None and dml_result:
                     ci_upper = dml_result.get("lift_ci_upper")
 
+                # F3: Determine corpus row status from estimator truth
+                if scm_ok and dml_ok:
+                    corpus_status = "ok"
+                elif scm_ok or dml_ok:
+                    corpus_status = "ok"  # at least one estimator succeeded
+                else:
+                    corpus_status = "fallback"  # should not reach here due to should_write check
+
                 fc_tags: dict[str, Any] | None = (
                     quarantine_decision.get("integrity_tags") if quarantine_decision else None
                 )
 
                 await create_signed_corpus_row(
-                    intervention_id=request.intervention_id,
-                    tenant_id=request.tenant_id,
+                    intervention_id=body.intervention_id,
+                    tenant_id=tenant_id,
                     estimator="scm+dml",
                     lift=lift,
                     lift_ci_lower=ci_lower,
                     lift_ci_upper=ci_upper,
-                    status="ok",
+                    status=corpus_status,
                     integrity_tags=integrity_tags,
                     signing_key_pem=signing_key_pem,
                     foreign_change_tags=fc_tags,
