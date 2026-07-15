@@ -192,7 +192,7 @@ class CorpusWriteRequest(BaseModel):
 
 
 class CorpusWriteResponse(BaseModel):
-    row_id: int
+    row_id: int | None
     estimated_at: str
     signature: str
     payload_hash: str
@@ -502,9 +502,10 @@ async def write_corpus(request: Request, body: CorpusWriteRequest) -> CorpusWrit
 
     # M4-thin: DB write is optional (may not have DB in dev)
     # Return row with metadata; actual persist via batch job
+    # Honest candor: no DB write occurred in thin mode
     payload_hash = sha256(row.canonical_json.encode()).hexdigest()
     return CorpusWriteResponse(
-        row_id=-1,  # placeholder — real ID from DB insert
+        row_id=None,
         estimated_at=row.estimated_at,
         signature=row.signature.hex(),
         payload_hash=payload_hash,
@@ -954,8 +955,14 @@ async def run_measurement_pipeline(
                     signing_key_pem=signing_key_pem,
                     foreign_change_tags=fc_tags,
                 )
-                corpus_written = True
-                corpus_row_id = -1  # Placeholder until DB write
+                # M4-thin: corpus row is SIGNED and PREPARED but not persisted
+                # Honest candor: no DB write occurred, so corpus_written=False
+                corpus_written = False
+                corpus_row_id = None
+                # Include the prepared row in metadata for candor
+                if "prepared_corpus_row" not in quarantine_decision:
+                    quarantine_decision = quarantine_decision or {}
+                    quarantine_decision["prepared_corpus_row"] = True
         except Exception:
             # Signing key not available or write failed - continue without corpus write
             pass
