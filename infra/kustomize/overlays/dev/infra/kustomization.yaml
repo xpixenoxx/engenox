@@ -19,7 +19,6 @@ commonLabels:
 
 configMapGenerator:
   - name: infra-config
-    behavior: merge
     literals:
       - environment=dev
       - cluster=engenox-dev
@@ -27,7 +26,6 @@ configMapGenerator:
 
 secretGenerator:
   - name: infra-secrets
-    behavior: merge
     envs:
       - .env.infra.secrets
 
