@@ -54,6 +54,7 @@ patches:
       kind: ConfigMap
       metadata:
         name: engenox-config
+        namespace: engenox
       data:
         ENVIRONMENT: dev
         LOG_LEVEL: debug
