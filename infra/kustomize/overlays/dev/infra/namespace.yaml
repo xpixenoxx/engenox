@@ -28,14 +28,6 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: temporal
-  labels:
-    app.kubernetes.io/name: temporal
-    app.kubernetes.io/part-of: engenox
----
-apiVersion: v1
-kind: Namespace
-metadata:
   name: clickhouse
   labels:
     app.kubernetes.io/name: clickhouse
