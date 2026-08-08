@@ -59,9 +59,3 @@ configMapGenerator:
       - R2_BUCKET=engenox-corpus-dev
       - CLICKHOUSE_HOST=clickhouse.clickhouse.svc.cluster.local
       - TEMPORAL_HOST=engenox-temporal.temporal.svc.cluster.local
-
-secretGenerator:
-  - name: engenox-secrets
-    behavior: merge
-    envs:
-      - .env.dev.secrets

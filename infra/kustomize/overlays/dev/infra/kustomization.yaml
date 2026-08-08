@@ -24,10 +24,7 @@ configMapGenerator:
       - cluster=engenox-dev
       - region=us-central1
 
-secretGenerator:
-  - name: infra-secrets
-    envs:
-      - .env.infra.secrets
+
 
 vars:
   - name: CLUSTER_NAME
