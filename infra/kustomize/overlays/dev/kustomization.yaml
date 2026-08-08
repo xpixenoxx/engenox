@@ -1,0 +1,67 @@
+# infra/kustomize/overlays/dev/kustomization.yaml
+# Main Dev overlay - includes all services and infrastructure
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: engenox
+
+resources:
+  - infra
+  - observability
+  - clickhouse
+  - ../../base
+
+commonLabels:
+  app.kubernetes.io/part-of: engenox
+  environment: dev
+
+images:
+  - name: us-central1-docker.pkg.dev/engenox-dev/services/control-plane
+    newTag: latest
+  - name: us-central1-docker.pkg.dev/engenox-dev/services/decision
+    newTag: latest
+  - name: us-central1-docker.pkg.dev/engenox-dev/services/gateway
+    newTag: latest
+  - name: us-central1-docker.pkg.dev/engenox-dev/services/temporal
+    newTag: latest
+  - name: us-central1-docker.pkg.dev/engenox-dev/services/perception
+    newTag: latest
+  - name: us-central1-docker.pkg.dev/engenox-dev/services/action
+    newTag: latest
+  - name: us-central1-docker.pkg.dev/engenox-dev/services/measurement
+    newTag: latest
+
+replicas:
+  - name: engenox-control-plane
+    count: 1
+  - name: engenox-decision
+    count: 1
+  - name: engenox-gateway
+    count: 1
+  - name: engenox-temporal
+    count: 1
+  - name: engenox-perception
+    count: 1
+  - name: engenox-action
+    count: 1
+  - name: engenox-measurement
+    count: 1
+
+configMapGenerator:
+  - name: engenox-config
+    behavior: merge
+    literals:
+      - ENVIRONMENT=dev
+      - LOG_LEVEL=debug
+      - TRACING_ENABLED=true
+      - METRICS_ENABLED=true
+      - R2_BUCKET=engenox-corpus-dev
+      - CLICKHOUSE_HOST=clickhouse.clickhouse.svc.cluster.local
+      - TEMPORAL_HOST=engenox-temporal.temporal.svc.cluster.local
+
+secretGenerator:
+  - name: engenox-secrets
+    behavior: merge
+    envs:
+      - .env.dev.secrets
