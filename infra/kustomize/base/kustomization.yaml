@@ -10,7 +10,8 @@ resources:
   - services.yaml
   - deployments.yaml
   - ingress.yaml
+  - web.yaml
 
 commonLabels:
   app.kubernetes.io/managed-by: kustomize
-  app.kubernetes.io/part-of: engenox  - web.yaml
+  app.kubernetes.io/part-of: engenox
