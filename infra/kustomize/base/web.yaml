@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: engenox-web
+  labels:
+    app: engenox-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: engenox-web
+  template:
+    metadata:
+      labels:
+        app: engenox-web
+    spec:
+      containers:
+        - name: web
+          image: us-central1-docker.pkg.dev/engenox-stage/engenox/web:dev
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NODE_ENV
+              value: "production"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: engenox-web
+  labels:
+    app: engenox-web
+spec:
+  selector:
+    app: engenox-web
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000

@@ -1,0 +1,48 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: engenox-ingress
+  namespace: engenox
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - host: engenox.pixenox.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: engenox-web
+                port:
+                  number: 3000
+          - path: /control-plane
+            pathType: Prefix
+            backend:
+              service:
+                name: engenox-control-plane
+                port:
+                  number: 8081
+          - path: /decision
+            pathType: Prefix
+            backend:
+              service:
+                name: engenox-decision
+                port:
+                  number: 8081
+          - path: /gateway
+            pathType: Prefix
+            backend:
+              service:
+                name: engenox-gateway
+                port:
+                  number: 8080
+          - path: /measurement
+            pathType: Prefix
+            backend:
+              service:
+                name: engenox-measurement
+                port:
+                  number: 8003
