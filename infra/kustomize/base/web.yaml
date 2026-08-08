@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: us-central1-docker.pkg.dev/engenox-stage/engenox/web:dev
+          image: us-central1-docker.pkg.dev/engenox-stage/engenox-docker/web:dev
           imagePullPolicy: Always
           ports:
             - containerPort: 3000
