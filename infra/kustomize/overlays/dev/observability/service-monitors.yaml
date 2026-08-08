@@ -22,25 +22,7 @@ spec:
       - engenox
       - engenox-system
 
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: temporal
-  namespace: monitoring
-  labels:
-    release: mimir
-spec:
-  selector:
-    matchLabels:
-      app: temporal
-  endpoints:
-    - port: http
-      path: /metrics
-      interval: 30s
-  namespaceSelector:
-    matchNames:
-      - temporal
+
 
 ---
 apiVersion: monitoring.coreos.com/v1
