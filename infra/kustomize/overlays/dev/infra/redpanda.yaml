@@ -1,0 +1,165 @@
+# infra/kustomize/overlays/dev/infra/redpanda.yaml
+# Redpanda (MVP) -> AutoMQ (graduation target)
+
+---
+# Redpanda Operator
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: redpanda-operator
+  namespace: redpanda
+spec:
+  channel: stable
+  name: redpanda-operator
+  source: operatorhubio-catalog
+  sourceNamespace: olm
+  installPlanApproval: Automatic
+
+---
+# Redpanda Cluster
+apiVersion: cluster.redpanda.com/v1beta1
+kind: Redpanda
+metadata:
+  name: engenox-redpanda
+  namespace: redpanda
+  labels:
+    app.kubernetes.io/name: redpanda
+    app.kubernetes.io/part-of: engenox
+    environment: dev
+spec:
+  chartRef: {}
+  clusterSpec:
+    replicas: 3
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "2000m"
+        memory: "4Gi"
+    storage:
+      capacity: 50Gi
+      storageClass: standard-rwo
+    auth:
+      sasl:
+        enabled: true
+        users:
+          - name: engenox
+            password: $(REDPANDA_SASL_PASSWORD)
+            mechanism: SCRAM-SHA-512
+      tls:
+        enabled: false  # Enable for prod
+    configuration:
+      enableSASL: true
+      enableAutoCreateTopics: true
+      defaultTopicReplications: 3
+      defaultTopicPartitions: 6
+    # Redpanda-specific
+    redpanda:
+      adminApi:
+        port: 9644
+      pandaproxyApi:
+        port: 8082
+      schemaRegistry:
+        port: 8081
+      developerMode: true
+      rpcServer:
+        port: 33145
+
+---
+# Topics for Engenox (created via operator or manually)
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: engenox-perception-raw
+  namespace: redpanda
+  labels:
+    strimzi.io/cluster: engenox-redpanda
+spec:
+  topicName: engenox.perception.raw
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 604800000  # 7 days
+    cleanup.policy: delete
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: engenox-decision-plans
+  namespace: redpanda
+  labels:
+    strimzi.io/cluster: engenox-redpanda
+spec:
+  topicName: engenox.decision.plans
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 2592000000  # 30 days
+    cleanup.policy: delete
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: engenox-action-prs
+  namespace: redpanda
+  labels:
+    strimzi.io/cluster: engenox-redpanda
+spec:
+  topicName: engenox.action.prs
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: 2592000000  # 30 days
+    cleanup.policy: compact
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: engenox-measurement-cio
+  namespace: redpanda
+  labels:
+    strimzi.io/cluster: engenox-redpanda
+spec:
+  topicName: engenox.measurement.cio
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 31536000000  # 1 year
+    cleanup.policy: delete
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: engenox-temporal-workflows
+  namespace: redpanda
+  labels:
+    strimzi.io/cluster: engenox-redpanda
+spec:
+  topicName: engenox.temporal.workflows
+  partitions: 3
+  replicas: 3
+  config:
+    retention.ms: 604800000  # 7 days
+    cleanup.policy: delete
+
+---
+# ServiceMonitor for Redpanda metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redpanda
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: redpanda
+spec:
+  endpoints:
+    - port: admin-api
+      interval: 30s
+      path: /metrics
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redpanda
+  namespaceSelector:
+    matchNames:
+      - redpanda
