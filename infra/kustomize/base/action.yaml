@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: engenox-action
+  namespace: engenox
+  labels:
+    app: engenox-action
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: engenox-action
+  template:
+    metadata:
+      labels:
+        app: engenox-action
+    spec:
+      serviceAccountName: engenox-workload
+      containers:
+        - name: action
+          image: us-central1-docker.pkg.dev/engenox-stage/services/action:latest
+          ports:
+            - containerPort: 9091
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "9091"
+            - name: TENANT_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9091
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9091
+            initialDelaySeconds: 5
+            periodSeconds: 10

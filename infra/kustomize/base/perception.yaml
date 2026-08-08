@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: engenox-perception
+  namespace: engenox
+  labels:
+    app: engenox-perception
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: engenox-perception
+  template:
+    metadata:
+      labels:
+        app: engenox-perception
+    spec:
+      serviceAccountName: engenox-workload
+      containers:
+        - name: perception
+          image: us-central1-docker.pkg.dev/engenox-stage/services/perception:latest
+          ports:
+            - containerPort: 9090
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "9090"
+            - name: TENANT_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 10

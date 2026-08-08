@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: engenox-config
+  namespace: engenox
+data:
+  # Database (CNPG cluster)
+  PG_HOST: engenox-primary-dev-rw.cnpg-system.svc.cluster.local
+  PG_PORT: "5432"
+  PG_DATABASE: engenox
+  PG_USER: engenox_app
+  # Don't put password here - use secret
+
+  # Valkey (Memorystore - external)
+  VALKEY_HOST: engenox-primary-dev-valkey.us-central1.memorystore.cloud.google.com
+  VALKEY_PORT: "6379"
+
+  # Temporal
+  TEMPORAL_ADDRESS: engenox-temporal-frontend.engenox.svc.cluster.local:7233
+
+  # Redpanda (disabled in dev)
+  REDPANDA_BROKERS: ""
+
+  clickhouse_host: ""
+  clickhouse_port: ""
+  clickhouse_database: ""
+  clickhouse_user: ""
+  clickhouse_password: ""
+
+  # Object storage (R2)
+  R2_ENDPOINT: https://<account-id>.r2.cloudflarestorage.com
+  R2_BUCKET: engenox-corpus
+  R2_ACCESS_KEY_ID: ""
+  R2_SECRET_ACCESS_KEY: ""
+
+  # KMS
+  KMS_KEY_RING: engenox-cell-kek
+  KMS_KEY_NAME: engenox-kek
+  KMS_LOCATION: us-central1
+  KMS_PROJECT_ID: engenox-stage
+
+  # WorkOS
+  WORKOS_API_KEY: ""
+  WORKOS_CLIENT_ID: ""
+  WORKOS_ORGANIZATION_ID: ""
+  WORKOS_REDIRECT_URI: https://engenox.pixenox.com/callback
+
+  # LLM Gateway
+  LLM_GATEWAY_URL: http://engenox-gateway.engenox.svc.cluster.local:8080
+
+  # Environment
+  NODE_ENV: production
+  PYTHONUNBUFFERED: "1"
+  LOG_LEVEL: info

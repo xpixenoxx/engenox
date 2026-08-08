@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: engenox-temporal
+  namespace: engenox
+  labels:
+    app: engenox-temporal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: engenox-temporal
+  template:
+    metadata:
+      labels:
+        app: engenox-temporal
+    spec:
+      serviceAccountName: engenox-workload
+      containers:
+        - name: temporal
+          image: us-central1-docker.pkg.dev/engenox-stage/services/temporal:latest
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: TENANT_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"

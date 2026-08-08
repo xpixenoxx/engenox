@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: engenox-measurement
+  namespace: engenox
+  labels:
+    app: engenox-measurement
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: engenox-measurement
+  template:
+    metadata:
+      labels:
+        app: engenox-measurement
+    spec:
+      serviceAccountName: engenox-workload
+      containers:
+        - name: measurement
+          image: us-central1-docker.pkg.dev/engenox-stage/services/measurement:latest
+          ports:
+            - containerPort: 8003
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: TENANT_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8003
+            initialDelaySeconds: 45
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8003
+            initialDelaySeconds: 45
+            periodSeconds: 10
