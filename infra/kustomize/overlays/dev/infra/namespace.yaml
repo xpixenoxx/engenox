@@ -1,0 +1,50 @@
+# infra/kustomize/overlays/dev/infra/namespace.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: engenox-system
+  labels:
+    app.kubernetes.io/name: engenox-system
+    app.kubernetes.io/part-of: engenox
+    environment: dev
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    app.kubernetes.io/name: monitoring
+    app.kubernetes.io/part-of: engenox
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: redpanda
+  labels:
+    app.kubernetes.io/name: redpanda
+    app.kubernetes.io/part-of: engenox
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: temporal
+  labels:
+    app.kubernetes.io/name: temporal
+    app.kubernetes.io/part-of: engenox
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: clickhouse
+  labels:
+    app.kubernetes.io/name: clickhouse
+    app.kubernetes.io/part-of: engenox
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    app.kubernetes.io/name: argocd
+    app.kubernetes.io/part-of: engenox

@@ -1,0 +1,159 @@
+# infra/kustomize/overlays/dev/infra/cnpg-cluster.yaml
+# CloudNativePG cluster for Engenox dev (PG17 + AGE + pgvector)
+
+---
+# CNPG Cluster
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: engenox-pg
+  namespace: engenox-system
+  labels:
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/part-of: engenox
+    environment: dev
+spec:
+  instances: 3
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.4-1
+  primaryUpdateStrategy: unsupervised
+  replicationSlots:
+    highAvailability:
+      enabled: true
+      syncReplicas: 1
+  walStorage:
+    resizeInUseVolumes: true
+    storageClass: standard-rwo
+    resources:
+      requests:
+        storage: 20Gi
+  bootstrap:
+    initdb:
+      database: engenox
+      owner: engenox
+      secret:
+        name: engenox-pg-credentials
+      postInitSQL:
+        - CREATE EXTENSION IF NOT EXISTS age;
+        - CREATE EXTENSION IF NOT EXISTS pgvector;
+        - CREATE EXTENSION IF NOT EXISTS pg_bigm;
+        - CREATE EXTENSION IF NOT EXISTS pg_trgm;
+        - CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+        - CREATE EXTENSION IF NOT EXISTS citext;
+  postgresql:
+    parameters:
+      max_connections: "200"
+      shared_buffers: "256MB"
+      effective_cache_size: "1GB"
+      maintenance_work_mem: "128MB"
+      checkpoint_completion_target: "0.9"
+      wal_buffers: "16MB"
+      default_statistics_target: "100"
+      random_page_cost: "1.1"
+      effective_io_concurrency: "200"
+      work_mem: "4MB"
+      min_wal_size: "1GB"
+      max_wal_size: "4GB"
+      max_worker_processes: "8"
+      max_parallel_workers_per_gather: "4"
+      max_parallel_workers: "8"
+      # AGE config
+      ag_master_state_size: "512MB"
+      age_use_pgxp: "on"
+      # pgvector
+      shared_preload_libraries: "age,vector,auto_explain,pg_stat_statements"
+      session_preload_libraries: "auto_explain"
+      auto_explain.log_min_duration: "1s"
+      auto_explain.log_analyze: "on"
+      auto_explain.log_format: "json"
+      pg_stat_statements.max: "10000"
+      pg_stat_statements.track: "all"
+    pg_hba:
+      - local all all trust
+      - host all all 0.0.0.0/0 scram-sha-256
+      - host all all ::/0 scram-sha-256
+  storage:
+    storageClass: standard-rwo
+    resources:
+      requests:
+        storage: 50Gi
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "2000m"
+  monitoring:
+    enabled: true
+    metricsPort: 9187
+    customQueriesConfigMap:
+      - name: cnpg-default-metrics
+    podMonitor:
+      enabled: true
+  affinity:
+    podAntiAffinityType: preferred
+    topologyKey: kubernetes.io/hostname
+  priorityClassName: system-node-critical
+
+---
+# Superuser Secret (auto-managed by CNPG)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: engenox-pg-credentials
+  namespace: engenox-system
+type: kubernetes.io/basic-auth
+stringData:
+  username: engenox
+  password: CHANGE_ME_VIA_SECRET_ROTATION
+
+---
+# App User Secret (auto-managed by CNPG)
+apiVersion: postgresql.cnpg.io/v1
+kind: ClusterRole
+metadata:
+  name: engenox-app-role
+  namespace: engenox-system
+spec:
+  cluster: engenox-pg
+  roles:
+    - login: true
+      inRoles:
+        - engenox_app
+      comments: "Application role for Engenox services"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: engenox-app-credentials
+  namespace: engenox-system
+  labels:
+    app.kubernetes.io/part-of: engenox
+type: Opaque
+stringData:
+  username: engenox_app
+  password: CHANGE_ME_VIA_SECRET_ROTATION
+
+---
+# Pgpool for connection pooling (optional - can use PgBouncer instead)
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: engenox-pgpool
+  namespace: engenox-system
+spec:
+  cluster: engenox-pg
+  instances: 2
+  imageName: ghcr.io/cloudnative-pg/pgbouncer:1.21-1
+  poolMode: transaction
+  maxClientConn: 2000
+  defaultPoolSize: 20
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  affinity:
+    podAntiAffinityType: preferred

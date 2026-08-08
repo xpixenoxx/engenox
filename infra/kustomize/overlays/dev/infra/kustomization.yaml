@@ -1,0 +1,41 @@
+# infra/kustomize/overlays/dev/infra/kustomization.yaml
+# Engenox Dev Infrastructure Stack
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: engenox-system
+
+resources:
+  - namespace.yaml
+  - cnpg-cluster.yaml
+  - valkey.yaml
+  - redpanda.yaml
+  - temporal.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: engenox
+  environment: dev
+
+configMapGenerator:
+  - name: infra-config
+    behavior: merge
+    literals:
+      - environment=dev
+      - cluster=engenox-dev
+      - region=us-central1
+
+secretGenerator:
+  - name: infra-secrets
+    behavior: merge
+    envs:
+      - .env.infra.secrets
+
+vars:
+  - name: CLUSTER_NAME
+    objref:
+      kind: Namespace
+      name: engenox-system
+      apiVersion: v1
+    fieldref:
+      fieldpath: metadata.name

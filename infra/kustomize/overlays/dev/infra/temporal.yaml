@@ -1,0 +1,128 @@
+# infra/kustomize/overlays/dev/infra/temporal.yaml
+# Temporal (self-hosted on Postgres for MVP cost)
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: temporal
+  labels:
+    app.kubernetes.io/name: temporal
+    app.kubernetes.io/part-of: engenox
+    environment: dev
+
+---
+# Temporal Operator (optional - using Helm template instead)
+apiVersion: temporal.io/v1beta1
+kind: TemporalCluster
+metadata:
+  name: engenox-temporal
+  namespace: temporal
+spec:
+  # Database (uses CNPG-managed Postgres)
+  persistence:
+    enabled: true
+    storageClass: standard-rwo
+    size: 50Gi
+  # Use CNPG Postgres instead of ephemeral
+  db:
+    host: engenox-primary-rw.engenox-system.svc.cluster.local
+    port: 5432
+    user: temporal
+    dbName: temporal
+    passwordSecretRef:
+      name: temporal-db-password
+      key: password
+  # Temporal server config
+  server:
+    replicas: 1
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "2000m"
+        memory: "4Gi"
+    config:
+      persistence:
+        default:
+          driver: postgres
+          init:
+            maxTotalConns: 100
+      services:
+        frontend:
+          rpc:
+            grpcPort: 7233
+            httpPort: 7234
+        matching:
+          rpc:
+            grpcPort: 7235
+        history:
+          rpc:
+            grpcPort: 7236
+        worker:
+          rpc:
+            grpcPort: 7237
+  # Web UI
+  ui:
+    enabled: true
+    replicas: 1
+    serviceType: ClusterIP
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "1Gi"
+    ingress:
+      enabled: true
+      className: nginx
+      hosts:
+        - host: temporal.engenox.pixenox.com
+          paths: ["/"]
+      tls:
+        - secretName: temporal-ingress-tls
+          hosts:
+            - temporal.engenox.pixenox.com
+
+---
+# Service for Temporal gRPC
+apiVersion: v1
+kind: Service
+metadata:
+  name: engenox-temporal
+  namespace: temporal
+  labels:
+    app.kubernetes.io/name: temporal
+spec:
+  ports:
+    - port: 7233
+      targetPort: 7233
+      name: grpc
+    - port: 7234
+      targetPort: 7234
+      name: http
+  selector:
+    app.kubernetes.io/name: temporal
+
+---
+# ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: temporal
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: temporal
+spec:
+  endpoints:
+    - port: http
+      interval: 30s
+      path: /metrics
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: temporal
+  namespaceSelector:
+    matchNames:
+      - temporal
