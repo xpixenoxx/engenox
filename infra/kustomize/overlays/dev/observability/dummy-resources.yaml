@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dummy-resources
+data:
+  cpu: "10m"
+  memory: "50Mi"

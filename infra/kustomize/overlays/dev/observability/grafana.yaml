@@ -1,0 +1,269 @@
+# infra/kustomize/overlays/dev/observability/grafana.yaml
+# Grafana - visualization and alerting
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: monitoring
+data:
+  grafana.ini: |
+    [server]
+    domain = engenox.pixenox.com
+    root_url = %(protocol)s://%(domain)s/monitoring/grafana/
+    serve_from_sub_path = true
+
+    [security]
+    admin_user = admin
+    admin_password = ${GF_SECURITY_ADMIN_PASSWORD}
+    secret_key = ${GF_SECURITY_SECRET_KEY}
+    login_remember_days = 7
+    cookie_secure = true
+    cookie_samesite = lax
+
+    [auth.generic_oauth]
+    enabled = true
+    name = WorkOS
+    allow_sign_up = true
+    client_id = ${WORKOS_CLIENT_ID}
+    client_secret = ${WORKOS_CLIENT_SECRET}
+    scopes = openid email profile
+    auth_url = https://api.workos.com/userinfo/authorize
+    token_url = https://api.workos.com/userinfo/token
+    api_url = https://api.workos.com/userinfo/me
+    role_attribute_path = contains(roles[*], 'admin') && 'Admin' || 'Viewer'
+    email_attribute_path = email
+    name_attribute_path = name
+
+    [auth.proxy]
+    enabled = false
+
+    [users]
+    allow_sign_up = false
+    allow_org_create = false
+    auto_assign_org = true
+    auto_assign_org_role = Viewer
+
+    [dataproxy]
+    timeout = 300
+    dial_timeout = 30
+    keep_alive_seconds = 30
+
+    [unified_alerting]
+    enabled = true
+
+    [log]
+    mode = console
+    level = info
+
+    [metrics]
+    enabled = true
+    interval_seconds = 10
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: monitoring
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Mimir
+        type: prometheus
+        access: proxy
+        url: http://mimir.monitoring:9009/prometheus
+        isDefault: true
+        editable: false
+        jsonData:
+          timeInterval: "15s"
+          queryTimeout: "60s"
+        secureJsonData: {}
+
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki.monitoring:3100
+        editable: false
+        jsonData:
+          maxLines: 1000
+          derivedFields:
+            - name: traceID
+              matcherRegex: "traceID=(\\w+)"
+              url: "/monitoring/grafana/explore?orgId=1&left=%5B%22now-1h%22,%22now%22,%22Tempo%22,%7B%22traceId%22:%22${__value.raw}%22%7D%5D"
+
+      - name: Tempo
+        type: tempo
+        access: proxy
+        url: http://tempo.monitoring:3200
+        editable: false
+        jsonData:
+          serviceMap:
+            datasourceUid: "Mimir"
+          tracesToLogs:
+            datasourceUid: "Loki"
+            tags: ['service.name', 'service.namespace']
+            spanStartTimeShift: '1h'
+            spanEndTimeShift: '-1h'
+          nodeGraph:
+            enabled: true
+        secureJsonData: {}
+
+      - name: ClickHouse
+        type: clickhouse
+        access: proxy
+        url: http://clickhouse.clickhouse:8123
+        editable: false
+        jsonData:
+          defaultDatabase: engenox
+          tlsSkipVerify: true
+        secureJsonData:
+          basicAuthUser: ${CLICKHOUSE_USER}
+          basicAuthPassword: ${CLICKHOUSE_PASSWORD}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: monitoring
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'Engenox'
+        folder: 'Engenox'
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 10
+        allowUiUpdates: true
+        options:
+          path: /var/lib/grafana/dashboards
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:11.1.0
+          args:
+            - -config=/etc/grafana/grafana.ini
+            - -homepath=/usr/share/grafana
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-secrets
+                  key: admin-password
+            - name: GF_SECURITY_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-secrets
+                  key: secret-key
+            - name: WORKOS_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-secrets
+                  key: workos-client-id
+            - name: WORKOS_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-secrets
+                  key: workos-client-secret
+            - name: CLICKHOUSE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-secrets
+                  key: clickhouse-user
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-secrets
+                  key: clickhouse-password
+          volumeMounts:
+            - name: config
+              mountPath: /etc/grafana
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboards
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: data
+              mountPath: /var/lib/grafana
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: config
+          configMap:
+            name: grafana-config
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
+        - name: data
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  ports:
+    - port: 3000
+      targetPort: 3000
+      name: http
+  selector:
+    app: grafana
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-secrets
+  namespace: monitoring
+type: Opaque
+stringData:
+  # TODO: Populate via secret rotation script (external-secrets or sealed-secrets)
+  admin-password: "CHANGE_ME"
+  secret-key: "CHANGE_ME_64_CHARS_MIN"
+  workos-client-id: "CHANGE_ME"
+  workos-client-secret: "CHANGE_ME"
+  clickhouse-user: "default"
+  clickhouse-password: "CHANGE_ME"

@@ -1,0 +1,30 @@
+# infra/kustomize/overlays/dev/clickhouse/kustomization.yaml
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: clickhouse
+
+resources:
+  - namespace.yaml
+  - clickhouse.yaml
+  - service.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: engenox
+      environment: dev
+      app.kubernetes.io/instance: clickhouse
+
+configMapGenerator:
+  - name: clickhouse-config
+    literals:
+      - clickhouse.xml=<clickhouse-config.xml>
+      - users.xml=<users.xml>
+      - config.xml=<config.xml>
+
+secretGenerator:
+  - name: clickhouse-secrets
+    literals:
+      - clickhouse-password=CHANGE_ME
+      - clickhouse-user=default

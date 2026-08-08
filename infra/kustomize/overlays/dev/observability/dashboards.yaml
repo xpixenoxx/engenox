@@ -1,0 +1,295 @@
+# infra/kustomize/overlays/dev/observability/dashboards.yaml
+# Grafana dashboards for Engenox services
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: engenox-dashboards
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  engenox-overview.json: |
+    {
+      "dashboard": {
+        "title": "Engenox System Overview",
+        "tags": ["engenox", "overview"],
+        "timezone": "browser",
+        "refresh": "30s",
+        "time": {"from": "now-1h", "to": "now"},
+        "panels": [
+          {
+            "title": "Service Health",
+            "type": "stat",
+            "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+            "datasource": "Mimir",
+            "targets": [
+              {
+                "expr": "up{job=~\"engeno.*\"}",
+                "legendFormat": "{{job}}",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "mappings": [
+                  {"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}
+                ],
+                "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+              }
+            }
+          },
+          {
+            "title": "Request Rate (req/s)",
+            "type": "timeseries",
+            "gridPos": {"x": 6, "y": 0, "w": 12, "h": 8},
+            "datasource": "Mimir",
+            "targets": [
+              {"expr": "sum(rate(http_requests_total{job=~\"engeno.*\"}[5m])) by (job)", "legendFormat": "{{job}}", "refId": "A"}
+            ]
+          },
+          {
+            "title": "Error Rate (%)",
+            "type": "timeseries",
+            "gridPos": {"x": 18, "y": 0, "w": 6, "h": 8},
+            "datasource": "Mimir",
+            "targets": [
+              {"expr": "sum(rate(http_requests_total{job=~\"engeno.*\",code=~\"5..\"}[5m])) by (job) / sum(rate(http_requests_total{job=~\"engeno.*\"}[5m])) by (job) * 100", "legendFormat": "{{job}}", "refId": "A"}
+            ]
+          },
+          {
+            "title": "P99 Latency (ms)",
+            "type": "timeseries",
+            "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+            "datasource": "Mimir",
+            "targets": [
+              {"expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job=~\"engeno.*\"}[5m])) by (job, le)) * 1000", "legendFormat": "{{job}}", "refId": "A"}
+            ]
+          },
+          {
+            "title": "Active Alerts",
+            "type": "table",
+            "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+            "datasource": "Mimir",
+            "targets": [
+              {"expr": "ALERTS{alertstate=\"firing\"}", "format": "table", "refId": "A"}
+            ]
+          }
+        ]
+      },
+      "overwrite": true
+    }
+
+  engenox-perception.json: |
+    {
+      "dashboard": {
+        "title": "Perception Service",
+        "tags": ["engenox", "perception"],
+        "timezone": "browser",
+        "refresh": "30s",
+        "time": {"from": "now-1h", "to": "now"},
+        "panels": [
+          {
+            "title": "Probe Success Rate",
+            "type": "timeseries",
+            "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+            "datasource": "Mimir",
+            "targets": [
+              {"expr": "sum(rate(perception_probe_success_total[5m])) by (provider, model) / sum(rate(perception_probe_total[5m])) by (provider, model) * 100", "legendFormat": "{{provider}}/{{model}}", "refId": "A"}
+            ]
+          },
+          {
+            "title": "Probe Latency P50/P95/P99",
+            "type": "timeseries",
+            "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+            "datasource": "Mimir",
+            "targets": [
+              {"expr": "histogram_quantile(0.50, sum(rate(perception_probe_duration_seconds_bucket[5m])) by (le)) * 1000", "legendFormat": "p50", "refId": "A"},
+              {"expr": "histogram_quantile(0.95, sum(rate(perception_probe_duration_seconds_bucket[5m])) by (le)) * 1000", "legendFormat": "p95", "refId": "B"},
+              {"expr": "histogram_quantile(0.99, sum(rate(perception_probe_duration_seconds_bucket[5m])) by (le)) * 1000", "legendFormat": "p99", "refId": "C"}
+            ]
+          },
+          {
+            "title": "Consent Check Results",
+            "type": "stat",
+            "gridPos": {"x": 0, "y": 8, "w": 6, "h": 4},
+            "datasource": "Mimir",
+            "targets": [
+              {"expr": "sum(rate(perception_consent_check_total{result=\"allowed\"}[5m]))", "legendFormat": "allowed", "refId": "A"},
+              {"expr": "sum(rate(perception_consent_check_total{result=\"denied\"}[5m]))", "legendFormat": "denied", "refId": "B"}
+            ]
+          },
+          {
+            "title": "Refresh Queue Depth",
+            "type": "timeseries",
+            "gridPos": {"x": 6, "y": 8, "w": 12, "h": 8},
+            "datasource": "Mimir",
+            "targets": [
+              {"expr": "perception_refresh_queue_depth", "legendFormat": "depth", "refId": "A"}
+            ]
+          }
+        ]
+      },
+      "overwrite": true
+    }
+
+  engenox-decision.json: |
+    {
+      "dashboard": {
+        "title": "Decision Service",
+        "tags": ["engenox", "decision"],
+        "timezone": "browser",
+        "refresh": "30s",
+        "time": {"from": "now-1h", "to": "now"},
+        "panels": [
+          {
+            "title": "Dial State Distribution",
+            "type": "piechart",
+            "gridPos": {"x": 0, "y": 0, "w": 8, "h": 8},
+            "datasource": "Mimir",
+            "targets": [
+              {"expr": "sum(decision_dial_current_state) by (state)", "legendFormat": "{{state}}", "refId": "A"}
+            ]
+          },
+          {
+            "title": "Plan Latency",
+            "type": "timeseries",
+            "gridPos": {"x": 8, "y": 0, "w": 16, "h": 8},
+            "datasource": "Mimir",
+            "targets": [
+              {"expr": "histogram_quantile(0.99, sum(rate(decision_plan_duration_seconds_bucket[5m])) by (le)) * 1000", "legendFormat": "p99", "refId": "A"}
+            ]
+          },
+          {
+            "title": "Escalation Rate",
+            "type": "timeseries",
+            "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+            "datasource": "Mimir",
+            "targets": [
+              {"expr": "sum(rate(decision_escalation_total[5m])) by (reason)", "legendFormat": "{{reason}}", "refId": "A"}
+            ]
+          },
+          {
+            "title": "Critic Verdicts",
+            "type": "stat",
+            "gridPos": {"x": 12, "y": 8, "w": 12, "h": 4},
+            "datasource": "Mimir",
+            "targets": [
+              {"expr": "sum(rate(decision_critic_verdict_total[5m])) by (verdict)", "legendFormat": "{{verdict}}", "refId": "A"}
+            ]
+          }
+        ]
+      },
+      "overwrite": true
+    }
+
+  engenox-measurement.json: |
+    {
+      "dashboard": {
+        "title": "Measurement Service",
+        "tags": ["engenox", "measurement"],
+        "timezone": "browser",
+        "refresh": "60s",
+        "time": {"from": "now-6h", "to": "now"},
+        "panels": [
+          {
+            "title": "Conformal Coverage by Segment",
+            "type": "timeseries",
+            "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+            "datasource": "Mimir",
+            "targets": [
+              {"expr": "sum(measurement_conformal_coverage{segment=\"overall\"})", "legendFormat": "overall", "refId": "A"},
+              {"expr": "sum(measurement_conformal_coverage{segment=\"high_volume\"})", "legendFormat": "high_volume", "refId": "B"},
+              {"expr": "sum(measurement_conformal_coverage{segment=\"low_volume\"})", "legendFormat": "low_volume", "refId": "C"}
+            ]
+          },
+          {
+            "title": "Corpus Write Rate",
+            "type": "timeseries",
+            "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+            "datasource": "Mimir",
+            "targets": [
+              {"expr": "sum(rate(measurement_corpus_write_total[5m])) by (status)", "legendFormat": "{{status}}", "refId": "A"}
+            ]
+          },
+          {
+            "title": "Quarantine Rate",
+            "type": "timeseries",
+            "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+            "datasource": "Mimir",
+            "targets": [
+              {"expr": "sum(rate(measurement_quarantine_total[5m])) by (reason)", "legendFormat": "{{reason}}", "refId": "A"}
+            ]
+          },
+          {
+            "title": "Foreign Change Detections",
+            "type": "stat",
+            "gridPos": {"x": 12, "y": 8, "w": 12, "h": 4},
+            "datasource": "Mimir",
+            "targets": [
+              {"expr": "sum(rate(measurement_foreign_change_detected_total[5m])) by (change_type)", "legendFormat": "{{change_type}}", "refId": "A"}
+            ]
+          }
+        ]
+      },
+      "overwrite": true
+    }
+
+  engenox-cio-corpus.json: |
+    {
+      "dashboard": {
+        "title": "CIO Corpus",
+        "tags": ["engenox", "corpus", "cio"],
+        "timezone": "browser",
+        "refresh": "60s",
+        "time": {"from": "now-24h", "to": "now"},
+        "panels": [
+          {
+            "title": "Corpus Size (rows)",
+            "type": "stat",
+            "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+            "datasource": "ClickHouse",
+            "targets": [
+              {"expr": "SELECT count() FROM engenox.cio_corpus", "legendFormat": "rows", "refId": "A"}
+            ]
+          },
+          {
+            "title": "Interventions by Type",
+            "type": "piechart",
+            "gridPos": {"x": 6, "y": 0, "w": 12, "h": 8},
+            "datasource": "ClickHouse",
+            "targets": [
+              {"expr": "SELECT intervention_type, count() as cnt FROM engenox.cio_corpus GROUP BY intervention_type", "legendFormat": "{{intervention_type}}", "refId": "A"}
+            ]
+          },
+          {
+            "title": "Uplift Distribution",
+            "type": "timeseries",
+            "gridPos": {"x": 18, "y": 0, "w": 6, "h": 8},
+            "datasource": "ClickHouse",
+            "targets": [
+              {"expr": "SELECT quantileTDigest(0.5)(uplift_pct) as p50, quantileTDigest(0.95)(uplift_pct) as p95, quantileTDigest(0.99)(uplift_pct) as p99 FROM engenox.cio_corpus WHERE ts > now() - INTERVAL 1 HOUR", "legendFormat": "", "refId": "A"}
+            ]
+          },
+          {
+            "title": "Integrity Verification Rate",
+            "type": "timeseries",
+            "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+            "datasource": "Mimir",
+            "targets": [
+              {"expr": "sum(rate(cio_corpus_integrity_check_total{result=\"pass\"}[5m])) / sum(rate(cio_corpus_integrity_check_total[5m])) * 100", "legendFormat": "pass %", "refId": "A"}
+            ]
+          },
+          {
+            "title": "R2 WORM Sync Status",
+            "type": "stat",
+            "gridPos": {"x": 12, "y": 8, "w": 12, "h": 4},
+            "datasource": "Mimir",
+            "targets": [
+              {"expr": "cio_r2_worm_sync_lag_seconds", "legendFormat": "lag (s)", "refId": "A"}
+            ]
+          }
+        ]
+      },
+      "overwrite": true
+    }

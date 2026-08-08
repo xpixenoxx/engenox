@@ -1,0 +1,224 @@
+# infra/kustomize/overlays/dev/observability/service-monitors.yaml
+# ServiceMonitors for Prometheus Operator / Mimir scraping
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: engenox-services
+  namespace: monitoring
+  labels:
+    release: mimir
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: engenox
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scheme: http
+  namespaceSelector:
+    matchNames:
+      - engenox
+      - engenox-system
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: temporal
+  namespace: monitoring
+  labels:
+    release: mimir
+spec:
+  selector:
+    matchLabels:
+      app: temporal
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+  namespaceSelector:
+    matchNames:
+      - temporal
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cnpg
+  namespace: monitoring
+  labels:
+    release: mimir
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgresql
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+  namespaceSelector:
+    matchNames:
+      - cnpg-system
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: valkey
+  namespace: monitoring
+  labels:
+    release: mimir
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: valkey
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+  namespaceSelector:
+    matchNames:
+      - valkey
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redpanda
+  namespace: monitoring
+  labels:
+    release: mimir
+spec:
+  selector:
+    matchLabels:
+      app: redpanda
+  endpoints:
+    - port: admin
+      path: /metrics
+      interval: 30s
+  namespaceSelector:
+    matchNames:
+      - redpanda
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: mimir-self
+  namespace: monitoring
+  labels:
+    release: mimir
+spec:
+  selector:
+    matchLabels:
+      app: mimir
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+  namespaceSelector:
+    matchNames:
+      - monitoring
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: loki-self
+  namespace: monitoring
+  labels:
+    release: mimir
+spec:
+  selector:
+    matchLabels:
+      app: loki
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+  namespaceSelector:
+    matchNames:
+      - monitoring
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: tempo-self
+  namespace: monitoring
+  labels:
+    release: mimir
+spec:
+  selector:
+    matchLabels:
+      app: tempo
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+  namespaceSelector:
+    matchNames:
+      - monitoring
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: grafana-self
+  namespace: monitoring
+  labels:
+    release: mimir
+spec:
+  selector:
+    matchLabels:
+      app: grafana
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+  namespaceSelector:
+    matchNames:
+      - monitoring
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: otel-collector-self
+  namespace: monitoring
+  labels:
+    release: mimir
+spec:
+  selector:
+    matchLabels:
+      app: otel-collector
+  endpoints:
+    - port: prometheus
+      path: /metrics
+      interval: 30s
+  namespaceSelector:
+    matchNames:
+      - monitoring
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: engenox-pods
+  namespace: monitoring
+  labels:
+    release: mimir
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: engenox
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+  namespaceSelector:
+    matchNames:
+      - engenox
+      - engenox-system

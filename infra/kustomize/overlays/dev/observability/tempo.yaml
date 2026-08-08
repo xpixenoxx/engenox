@@ -1,0 +1,144 @@
+# infra/kustomize/overlays/dev/observability/tempo.yaml
+# Grafana Tempo - distributed tracing
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-config
+  namespace: monitoring
+data:
+  tempo.yaml: |
+    server:
+      http_listen_port: 3200
+      grpc_listen_port: 9095
+      log_level: info
+    distributor:
+      receivers:
+        jaeger:
+          protocols:
+            thrift_http:
+              endpoint: 0.0.0.0:14268
+            grpc:
+              endpoint: 0.0.0.0:14250
+            thrift_binary:
+              endpoint: 0.0.0.0:6831
+            thrift_compact:
+              endpoint: 0.0.0.0:6832
+        otlp:
+          protocols:
+            http:
+              endpoint: 0.0.0.0:4318
+            grpc:
+              endpoint: 0.0.0.0:4317
+        zipkin:
+          endpoint: 0.0.0.0:9411
+    ingester:
+      max_block_duration: 5m
+      max_block_bytes: 1048576
+    compactor:
+      compaction:
+        block_retention: 24h
+        compacted_block_retention: 1h
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /var/tempo/blocks
+        wal:
+          path: /var/tempo/wal
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tempo
+  template:
+    metadata:
+      labels:
+        app: tempo
+    spec:
+      containers:
+        - name: tempo
+          image: grafana/tempo:2.5.0
+          args:
+            - -config.file=/etc/tempo/tempo.yaml
+          ports:
+            - containerPort: 3200
+              name: http
+            - containerPort: 9095
+              name: grpc
+            - containerPort: 14268
+              name: jaeger-t-http
+            - containerPort: 14250
+              name: jaeger-grpc
+            - containerPort: 6831
+              name: jaeger-t-bin
+            - containerPort: 6832
+              name: jaeger-t-comp
+            - containerPort: 4318
+              name: otlp-http
+            - containerPort: 4317
+              name: otlp-grpc
+            - containerPort: 9411
+              name: zipkin
+          volumeMounts:
+            - name: config
+              mountPath: /etc/tempo
+            - name: data
+              mountPath: /var/tempo
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3200
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 3200
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: config
+          configMap:
+            name: tempo-config
+        - name: data
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  namespace: monitoring
+spec:
+  ports:
+    - port: 3200
+      targetPort: 3200
+      name: http
+    - port: 9095
+      targetPort: 9095
+      name: grpc
+    - port: 14268
+      targetPort: 14268
+      name: jaeger-t-http
+    - port: 14250
+      targetPort: 14250
+      name: jaeger-grpc
+    - port: 4318
+      targetPort: 4318
+      name: otlp-http
+    - port: 4317
+      targetPort: 4317
+      name: otlp-grpc
+    - port: 9411
+      targetPort: 9411
+      name: zipkin
+  selector:
+    app: tempo

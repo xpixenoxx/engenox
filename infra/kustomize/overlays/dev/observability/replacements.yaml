@@ -1,0 +1,35 @@
+replacements:
+  - source:
+      kind: ConfigMap
+      name: dummy-resources
+      fieldPath: data.cpu
+    targets:
+      - select:
+          kind: Deployment
+        fieldPaths:
+          - spec.template.spec.containers.*.resources.requests.cpu
+        options:
+          create: true
+      - select:
+          kind: StatefulSet
+        fieldPaths:
+          - spec.template.spec.containers.*.resources.requests.cpu
+        options:
+          create: true
+  - source:
+      kind: ConfigMap
+      name: dummy-resources
+      fieldPath: data.memory
+    targets:
+      - select:
+          kind: Deployment
+        fieldPaths:
+          - spec.template.spec.containers.*.resources.requests.memory
+        options:
+          create: true
+      - select:
+          kind: StatefulSet
+        fieldPaths:
+          - spec.template.spec.containers.*.resources.requests.memory
+        options:
+          create: true

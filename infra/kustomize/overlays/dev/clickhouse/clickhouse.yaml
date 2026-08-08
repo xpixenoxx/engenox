@@ -1,0 +1,162 @@
+# infra/kustomize/overlays/dev/clickhouse/clickhouse.yaml
+# ClickHouse operator + cluster for engenox corpus OLAP
+# Apply: kubectl apply -k infra/kustomize/overlays/dev/clickhouse
+
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: clickhouse-operator
+  namespace: clickhouse
+spec:
+  channel: stable
+  name: clickhouse-operator
+  source: operatorhubio-catalog
+  sourceNamespace: olm
+  installPlanApproval: Automatic
+---
+# ClickHouse Installation (CRD)
+apiVersion: clickhouse.altinity.com/v1
+kind: ClickHouseInstallation
+metadata:
+  name: engenox
+  namespace: clickhouse
+  labels:
+    app.kubernetes.io/name: clickhouse
+    app.kubernetes.io/part-of: engenox
+    environment: dev
+spec:
+  configuration:
+    clusters:
+      - name: engenox-cluster
+        layout:
+          shardsCount: 1
+          replicasCount: 1
+        templates:
+          podTemplate: clickhouse-pod-template
+          volumeClaimTemplate: clickhouse-storage
+        settings:
+          max_concurrent_queries: 100
+          max_memory_usage: 8000000000
+          log_queries: 1
+          log_query_threads: 1
+    users:
+      default/profile: default
+      default/networks/ip: "::/0"
+      default/quota: default
+      default/password: "${CLICKHOUSE_PASSWORD}"
+    zookeeper:
+      nodes:
+        - host: clickhouse-zookeeper
+          port: 2181
+  templates:
+    podTemplates:
+      - name: clickhouse-pod-template
+        spec:
+          tolerations:
+            - key: workload
+              operator: Equal
+              value: database
+              effect: NoSchedule
+          containers:
+            - name: clickhouse
+              image: clickhouse/clickhouse-server:24.8
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "200m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "1000m"
+              livenessProbe:
+                httpGet:
+                  path: /ping
+                  port: 8123
+                initialDelaySeconds: 30
+                periodSeconds: 10
+              readinessProbe:
+                httpGet:
+                  path: /ping
+                  port: 8123
+                initialDelaySeconds: 5
+                periodSeconds: 5
+    volumeClaimTemplates:
+      - name: clickhouse-storage
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          storageClassName: "standard-rwo"
+          resources:
+            requests:
+              storage: 100Gi
+---
+# ZooKeeper for ClickHouse (required for replicated tables)
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse-zookeeper
+  namespace: clickhouse
+spec:
+  ports:
+    - port: 2181
+      name: client
+    - port: 2888
+      name: server
+    - port: 3888
+      name: election
+  clusterIP: None
+  selector:
+    app: clickhouse-zookeeper
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: clickhouse-zookeeper
+  namespace: clickhouse
+spec:
+  serviceName: clickhouse-zookeeper
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clickhouse-zookeeper
+  template:
+    metadata:
+      labels:
+        app: clickhouse-zookeeper
+    spec:
+      containers:
+        - name: zookeeper
+          image: zookeeper:3.9
+          ports:
+            - containerPort: 2181
+              name: client
+            - containerPort: 2888
+              name: server
+            - containerPort: 3888
+              name: election
+          env:
+            - name: ZOO_MY_ID
+              value: "1"
+            - name: ZOO_SERVERS
+              value: "server.1=clickhouse-zookeeper-0.clickhouse-zookeeper.clickhouse.svc.cluster.local:2888:3888;2181"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: logs
+              mountPath: /datalog
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "standard-rwo"
+        resources:
+          requests:
+            storage: 10Gi
+    - metadata:
+        name: logs
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "standard-rwo"
+        resources:
+          requests:
+            storage: 10Gi

@@ -1,0 +1,70 @@
+# infra/kustomize/overlays/dev/clickhouse/service.yaml
+# ClickHouse services for HTTP and native protocol
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse
+  namespace: clickhouse
+  labels:
+    app.kubernetes.io/name: clickhouse
+    app.kubernetes.io/part-of: engenox
+spec:
+  ports:
+    - port: 8123
+      targetPort: 8123
+      name: http
+      protocol: TCP
+    - port: 9000
+      targetPort: 9000
+      name: native
+      protocol: TCP
+    - port: 9009
+      targetPort: 9009
+      name: interserver
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: clickhouse
+    clickhouse.altinity.com/chi: engenox
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse-grpc
+  namespace: clickhouse
+  labels:
+    app.kubernetes.io/name: clickhouse
+    app.kubernetes.io/part-of: engenox
+spec:
+  ports:
+    - port: 9100
+      targetPort: 9100
+      name: grpc
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: clickhouse
+    clickhouse.altinity.com/chi: engenox
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse-headless
+  namespace: clickhouse
+  labels:
+    app.kubernetes.io/name: clickhouse
+    app.kubernetes.io/part-of: engenox
+spec:
+  clusterIP: None
+  ports:
+    - port: 9000
+      targetPort: 9000
+      name: native
+    - port: 9009
+      targetPort: 9009
+      name: interserver
+  selector:
+    app.kubernetes.io/name: clickhouse
+    clickhouse.altinity.com/chi: engenox
