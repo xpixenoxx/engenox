@@ -7,9 +7,6 @@ kind: Kustomization
 
 
 resources:
-  - infra
-  - observability
-  - clickhouse
   - ../../base
 
 commonLabels:
