@@ -48,14 +48,17 @@ replicas:
   - name: engenox-measurement
     count: 1
 
-configMapGenerator:
-  - name: engenox-config
-    behavior: merge
-    literals:
-      - ENVIRONMENT=dev
-      - LOG_LEVEL=debug
-      - TRACING_ENABLED=true
-      - METRICS_ENABLED=true
-      - R2_BUCKET=engenox-corpus-dev
-      - CLICKHOUSE_HOST=clickhouse.clickhouse.svc.cluster.local
-      - TEMPORAL_HOST=engenox-temporal.temporal.svc.cluster.local
+patches:
+  - patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: engenox-config
+      data:
+        ENVIRONMENT: dev
+        LOG_LEVEL: debug
+        TRACING_ENABLED: "true"
+        METRICS_ENABLED: "true"
+        R2_BUCKET: engenox-corpus-dev
+        CLICKHOUSE_HOST: clickhouse.clickhouse.svc.cluster.local
+        TEMPORAL_HOST: engenox-temporal.temporal.svc.cluster.local
