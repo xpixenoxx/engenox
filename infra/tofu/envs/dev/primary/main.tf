@@ -18,7 +18,9 @@ module "cell" {
   cohort                = "primary" # the signed CIO corpus cohort (16 section 2).
   environment           = "dev"
   region                = "us-central1"
-  redpanda_enabled      = false               # dev/M0 -- the closed loop is in-process; the bus defers to M3.
+  gcp_project_id        = var.gcp_project_id
+  gcp_project_number    = var.gcp_project_number
+  redpanda_enabled = false               # dev: enable for AtlasCycle E2E
   backup_retention_days = 14                  # dev -- short (the PITR restore drill is M1, not M0).
   valkey_tier           = "BASIC"             # dev -- no Valkey HA (cost); STANDARD_HA at stage/prod.
   kubeconfig_path       = var.kubeconfig_path # phase-1 (empty) -> phase-2 (live GKE kubeconfig).

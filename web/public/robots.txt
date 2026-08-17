@@ -1,0 +1,52 @@
+// web/public/robots.txt
+// Robots.txt for AI crawler accessibility and SEO
+
+# Engenox - AI Visibility Operating System
+# Allow all AI crawlers access to public content for perception measurement
+
+User-agent: *
+Allow: /
+
+# Explicitly allow AI crawlers
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Applebot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: Cohere-AI
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+# Disallow private/admin areas
+Disallow: /dashboard/
+Disallow: /admin/
+Disallow: /api/
+Disallow: /onboarding/
+Disallow: /login
+Disallow: /settings/
+Disallow: /_next/
+Disallow: /*.json$
+
+# Sitemap location
+Sitemap: https://engenox.com/sitemap.xml
+
+# Host
+Host: https://engenox.com

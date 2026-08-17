@@ -1,14 +1,14 @@
 """Tests for Measurement Service API — M4-thin."""
 
 import pandas as pd
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 # This test requires the app to be importable
 # Skip if dependencies not available
 try:
-    from engenox.measurement.main import app
     from engenox.measurement.config.settings import get_settings
+    from engenox.measurement.main import app
 
     APP_AVAILABLE = True
 except ImportError:
@@ -21,10 +21,14 @@ class TestMeasurementAPI:
 
     def setup_method(self):
         self.client = TestClient(app)
+        self.headers = {
+            "X-Tenant-ID": "tenant-test",
+            "Idempotency-Key": "test-key-1",
+        }
 
     def test_health_endpoint(self):
         """Health check endpoint returns OK."""
-        response = self.client.get("/v1/health")
+        response = self.client.get("/v1/health", headers=self.headers)
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
@@ -47,6 +51,7 @@ class TestMeasurementAPI:
                 "control_panel": control_panel,
                 "treatment_start_index": 10,
             },
+            headers=self.headers,
         )
 
         assert response.status_code == 200
@@ -70,6 +75,7 @@ class TestMeasurementAPI:
                 "covariates": x,
                 "n_folds": 3,
             },
+            headers=self.headers,
         )
 
         assert response.status_code == 200
@@ -86,6 +92,7 @@ class TestMeasurementAPI:
         response = self.client.post(
             "/v1/detect/foreign-change",
             json={"series": series},
+            headers=self.headers,
         )
 
         assert response.status_code == 200
@@ -103,6 +110,7 @@ class TestMeasurementAPI:
                 "alpha": 0.1,
                 "n_calibration": 0,
             },
+            headers=self.headers,
         )
 
         assert response.status_code == 200

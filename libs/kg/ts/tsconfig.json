@@ -13,8 +13,12 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "noEmit": true
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "allowImportingTsExtensions": false
   },
-  "include": ["src/**/*.ts", "__tests__/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "__tests__"]
 }

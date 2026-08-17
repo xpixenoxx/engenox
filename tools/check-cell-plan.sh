@@ -1,29 +1,23 @@
 #!/usr/bin/env bash
-# tools/check-cell-plan.sh — T04 the cell-template plan-test (assert the plan shows the expected
-# resources + NO AlloyDB, 24 §4 / ADR-0003 / STACK_DRIFT_WATCHDOG category 1).
+# tools/check-cell-plan.sh — T04/T01 the cell-template plan-test for dev AND stage.
 #
-# Reads a captured `tofu plan` output (text) + asserts the always-on resource types are present
-# (GKE cluster + node pool, the data-tier GSA, the GCS PITR bucket, the KMS key-ring + KEK, the
-# Memorystore-for-Valkey instance, the CNPG `Cluster` CR + `ScheduledBackup` via kubernetes_manifest)
-# + HARD-FAILS if any `alloydb` token appears (ADR-0003 — AlloyDB is forbidden; a clone w/o the gate
-# would silently regress). The interim Redpanda resource is conditional (redpanda_enabled); pass
-# --with-redpanda to also assert it, else it is feature-gated out of the dev plan.
-#
+# Asserts the plan shows expected resources + NO AlloyDB (ADR-0003 / WATCHDOG cat-1).
 # Usage:
 #   tofu -chdir=infra/tofu/envs/dev/primary plan -no-color > /tmp/cell-plan.txt
-#   tools/check-cell-plan.sh /tmp/cell-plan.txt                # core asserts (+ no alloydb)
-#   tools/check-cell-plan.sh /tmp/cell-plan-with-bus.txt --with-redpanda   # + the redpanda assert
-#
-# exit 0 = the plan shows the expected cell; exit 1 = a missing resource OR an alloydb hit.
-# Cites: ADR-0003; 16 §2; 24 §4; STACK_DRIFT_WATCHDOG category 1; T04 Tests (the plan-test).
+#   tools/check-cell-plan.sh /tmp/cell-plan.txt dev
+#   tofu -chdir=infra/tofu/envs/stage/primary plan -no-color > /tmp/cell-plan-stage.txt
+#   tools/check-cell-plan.sh /tmp/cell-plan-stage.txt stage [--with-redpanda]
+# Cites: ADR-0003; 16 §2; 24 §4; STACK_DRIFT_WATCHDOG cat-1; T01; T04.
 set -euo pipefail
 
-if [ "$#" -lt 1 ]; then
-  echo "FAIL: usage: $0 <plan-text-file> [--with-redpanda]" >&2
+if [ "$#" -lt 2 ]; then
+  echo "FAIL: usage: $0 <plan-text-file> <dev|stage> [--with-redpanda]" >&2
   exit 1
 fi
+
 plan_file="$1"
-shift
+env="$2"
+shift 2
 with_redpanda=0
 for arg in "$@"; do
   case "$arg" in
@@ -36,10 +30,11 @@ if [ ! -f "$plan_file" ]; then
   echo "FAIL: plan file not found: $plan_file" >&2
   exit 1
 fi
-plan="$(cat "$plan_file")"
 
-# --- the always-on resources (provisioned independent of the redpanda flag) -----------------
-# Each entry is `label|needle` — the needle is the dotted resource address tofu's plan emits.
+plan="$(cat "$plan_file")"
+fail=0
+
+# --- always-on resources (both dev and stage) ---
 always_on=(
   "GKE cluster|google_container_cluster.cell"
   "data node pool|google_container_node_pool.data"
@@ -52,7 +47,6 @@ always_on=(
   "CNPG ScheduledBackup|kubernetes_manifest.cnpg_scheduled_backup"
 )
 
-fail=0
 for entry in "${always_on[@]}"; do
   label="${entry%%|*}"
   needle="${entry#*|}"
@@ -62,6 +56,42 @@ for entry in "${always_on[@]}"; do
   fi
 done
 
+# --- stage-specific resources ---
+if [ "$env" = "stage" ]; then
+  stage_resources=(
+    "R2 corpus bucket|module.r2_corpus.cloudflare_r2_bucket.corpus"
+    "Auth proxy Worker|cloudflare_worker_script.auth_proxy"
+    "Auth proxy Worker route|cloudflare_worker_route.auth_proxy"
+  )
+  for entry in "${stage_resources[@]}"; do
+    label="${entry%%|*}"
+    needle="${entry#*|}"
+    if ! printf '%s' "$plan" | grep -qF "$needle"; then
+      echo "FAIL — the plan is missing the $label (needle '$needle' not found)" >&2
+      fail=1
+    fi
+  done
+
+  # Stage should have 3 CNPG instances (HA)
+  if ! printf '%s' "$plan" | grep -qF 'instances.*=.*3'; then
+    echo "FAIL — stage plan should show cnpg_instances = 3 (HA)" >&2
+    fail=1
+  fi
+
+  # Stage should have backup_retention_days = 30
+  if ! printf '%s' "$plan" | grep -qF 'backup_retention_days.*=.*30'; then
+    echo "FAIL — stage plan should show backup_retention_days = 30" >&2
+    fail=1
+  fi
+
+  # Stage should have valkey_tier = STANDARD_HA
+  if ! printf '%s' "$plan" | grep -qF 'valkey_tier.*=.*"STANDARD_HA"'; then
+    echo "FAIL — stage plan should show valkey_tier = STANDARD_HA" >&2
+    fail=1
+  fi
+fi
+
+# --- conditional: redpanda (enabled at stage, optional at dev) ---
 if [ "$with_redpanda" -eq 1 ]; then
   if ! printf '%s' "$plan" | grep -qF "kubernetes_manifest.redpanda_interim"; then
     echo "FAIL — --with-redpanda was set but the plan is missing kubernetes_manifest.redpanda_interim" >&2
@@ -69,7 +99,7 @@ if [ "$with_redpanda" -eq 1 ]; then
   fi
 fi
 
-# --- the watchdog gate: ZERO alloydb in the plan (ADR-0003; WATCHDOG category 1) -------------
+# --- WATCHDOG gate: ZERO alloydb in the plan (ADR-0003; WATCHDOG cat-1) ---
 alloydb_hits="$(printf '%s' "$plan" | grep -iE 'alloydb' || true)"
 if [ -n "$alloydb_hits" ]; then
   echo "FAIL — the cell plan contains 'alloydb' (AlloyDB is forbidden per ADR-0003; WATCHDOG cat-1):" >&2
@@ -77,7 +107,15 @@ if [ -n "$alloydb_hits" ]; then
   fail=1
 fi
 
+# --- WATCHDOG gate: NO WarpStream (ADR-0004; cat-1) ---
+warpstream_hits="$(printf '%s' "$plan" | grep -iE 'warpstream' || true)"
+if [ -n "$warpstream_hits" ]; then
+  echo "FAIL — the cell plan contains 'warpstream' (WarpStream is forbidden per ADR-0004; WATCHDOG cat-1):" >&2
+  printf '%s\n' "$warpstream_hits" >&2
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
-  echo "ok: the cell plan shows the expected resources (GKE, GCS PITR, KMS, Valkey, CNPG CR + backup) + no AlloyDB"
+  echo "ok: the $env cell plan shows expected resources + no AlloyDB/WarpStream"
 fi
 exit "$fail"

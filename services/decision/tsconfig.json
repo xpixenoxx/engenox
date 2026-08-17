@@ -4,7 +4,9 @@
     "outDir": "dist",
     "rootDir": "src",
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
-    "incremental": true
+    "incremental": true,
+    "noEmit": false,
+    "allowImportingTsExtensions": false
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

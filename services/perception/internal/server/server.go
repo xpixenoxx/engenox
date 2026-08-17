@@ -1,12 +1,12 @@
 // internal/server/server.go — PerceptionService implementation (T14 exemplar).
 //
 // Implements the gRPC contract for probing surfaces and writing assertions.
-// M3-thin: ProbeSurface calls gateway.Extract for each probe answer, writes
-// Assertion nodes via libs/kg AssertionStore port. Assert provides
-// direct KG writes for the control-plane's KG hydration path.
+// M5-thin: ProbeSurface calls gateway.Extract, probes all 5 surfaces with fan-out,
+// writes via kg.AssertionStore. Connectors + consent ledger + refresh hook wired.
 // M3-thin: REAL ConnectRPC call to gateway.Extract seam (replaces synthetic stub).
 //
-// Cites: 11 §3 (Extract seam), 13 §2/§3 (KG store port), ADR-0007 (thin column).
+// Cites: 11 §3 (Extract seam), 13 §2/§3 (KG store port), 25 §3 M5,
+//        ADR-0007 (thin column: mechanism preserved, substrate swapped).
 
 package server
 
@@ -16,6 +16,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -23,16 +24,38 @@ import (
 	eventv1 "github.com/engenox/contracts/generated/go/engenox/event/v1"
 	servicev1 "github.com/engenox/contracts/generated/go/engenox/service/v1"
 	servicev1connect "github.com/engenox/contracts/generated/go/engenox/service/v1/servicev1connect"
-	"github.com/engenox/kg"
+	engkg "github.com/engenox/kg"
+	"github.com/engenox/perception/internal/consent"
+	"github.com/engenox/perception/internal/connector"
+	"github.com/engenox/perception/internal/probe"
+	"github.com/engenox/perception/internal/refresh"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type perceptionServer struct {
 	servicev1.UnimplementedPerceptionServiceServer
 
-	kg           kg.AssertionStore
+	kg           engkg.AssertionStore
 	gatewayAddr  string
 	gatewayClient servicev1connect.GatewayServiceClient
+
+	// M5-thin additions
+	scheduler      *probe.ProbeScheduler
+	consentLedger  *consent.ConsentLedger
+	connectorReg   *connector.ConnectorRegistry
+	refreshHook    *refresh.RefreshHook
+	probeHistory   []ProbeHistoryEntry
+	historyMu      sync.Mutex
+}
+
+type ProbeHistoryEntry struct {
+	ProbeID     string
+	TenantID    string
+	Surface     entityv1.Surface
+	QueriedAt   time.Time
+	Assertions  int
+	Success     bool
+	Error       string
 }
 
 func New() *perceptionServer {
@@ -43,10 +66,54 @@ func New() *perceptionServer {
 	}
 	gatewayAddr := getEnv("GATEWAY_ADDR", "http://localhost:8080")
 	gatewayClient := servicev1connect.NewGatewayServiceClient(httpClient, gatewayAddr)
+
+	kgStore := engkg.NewInMemoryAssertionStore()
+
+	// M5-thin: Consent ledger with founder cohort
+	consentLedger := consent.NewConsentLedger()
+	if err := consentLedger.SeedFixtureCohort(); err != nil {
+		log.Printf("seed fixture cohort: %v", err)
+	}
+	consent.SeedTestConsents(consentLedger)
+
+	// M5-thin: Connector registry with 7 stub connectors
+	connectorReg := connector.NewConnectorRegistry()
+	connectorReg.Register(connector.NewAhrefsConnector(connector.Config{RateLimit: connector.DefaultRateLimitConfig()}))
+	connectorReg.Register(connector.NewSemrushConnector(connector.Config{RateLimit: connector.DefaultRateLimitConfig()}))
+	connectorReg.Register(connector.NewGSCConnector(connector.Config{RateLimit: connector.DefaultRateLimitConfig()}))
+	connectorReg.Register(connector.NewGA4Connector(connector.Config{RateLimit: connector.DefaultRateLimitConfig()}))
+	connectorReg.Register(connector.NewCDNConnector(connector.Config{RateLimit: connector.DefaultRateLimitConfig()}))
+	connectorReg.Register(connector.NewGitConnector(connector.Config{RateLimit: connector.DefaultRateLimitConfig()}))
+	connectorReg.Register(connector.NewCMSConnector(connector.Config{RateLimit: connector.DefaultRateLimitConfig()}))
+
+	// M5-thin: Probe scheduler + workers
+	workers := probe.AllWorkers()
+	scheduler := probe.NewProbeScheduler(
+		probe.DefaultSchedulerConfig(),
+		workers,
+		kgStore,
+		"http://localhost:8083", // measurement service
+	)
+
+	// M5-thin: Refresh hook (calls measurement service for foreign change detection)
+	refreshHook := refresh.NewRefreshHook(refresh.RefreshHookConfig{
+		MeasurementURL:   "http://localhost:8083",
+		CheckInterval:    15 * time.Minute,
+		SeriesWindow:     30,
+		TriggerOnWarning: true,
+		Scheduler:        scheduler,
+	})
+	go refreshHook.Start(context.Background())
+
 	return &perceptionServer{
-		kg:            kg.NewInMemoryAssertionStore(),
+		kg:            kgStore,
 		gatewayAddr:   gatewayAddr,
 		gatewayClient: gatewayClient,
+		scheduler:     scheduler,
+		consentLedger: consentLedger,
+		connectorReg:  connectorReg,
+		refreshHook:   refreshHook,
+		probeHistory:  make([]ProbeHistoryEntry, 0, 1000),
 	}
 }
 
@@ -103,7 +170,7 @@ func (s *perceptionServer) Assert(ctx context.Context, req *servicev1.AssertRequ
 }
 
 // FastPartialProbe returns early signal (<90s) for onboarding activation.
-func (s *perceptionServer) FastPartialProbe(ctx context.Context, req *servicev1.FastPartialProbeRequest) (*servicev1.FastPartialProbeResponse, error) {
+func (s *perceptionServer) FastPartialProbe(_ context.Context, req *servicev1.FastPartialProbeRequest) (*servicev1.FastPartialProbeResponse, error) {
 	// M3-thin: stub. M4-thicken: real fast-partial probe.
 	return &servicev1.FastPartialProbeResponse{
 		HasPresence:      false,
@@ -113,38 +180,76 @@ func (s *perceptionServer) FastPartialProbe(ctx context.Context, req *servicev1.
 }
 
 // GetProbeHistory returns probe history for a surface.
-func (s *perceptionServer) GetProbeHistory(ctx context.Context, req *servicev1.GetProbeHistoryRequest) (*servicev1.GetProbeHistoryResponse, error) {
-	// M3-thin: stub. M4-thicken: query probe history table.
-	return &servicev1.GetProbeHistoryResponse{}, nil
+func (s *perceptionServer) GetProbeHistory(_ context.Context, req *servicev1.GetProbeHistoryRequest) (*servicev1.GetProbeHistoryResponse, error) {
+	s.historyMu.Lock()
+	defer s.historyMu.Unlock()
+
+	var probes []*servicev1.ProbeSummary
+	limit := int(req.Limit)
+	if limit <= 0 || limit > len(s.probeHistory) {
+		limit = len(s.probeHistory)
+	}
+
+	for i := len(s.probeHistory) - limit; i < len(s.probeHistory); i++ {
+		entry := s.probeHistory[i]
+		probes = append(probes, &servicev1.ProbeSummary{
+			ProbeId:       entry.ProbeID,
+			ProbedAt:      timestamppb.New(entry.QueriedAt),
+			AssertionsFound: int32(entry.Assertions),
+			FastPartial:   false,
+		})
+	}
+
+	return &servicev1.GetProbeHistoryResponse{Probes: probes}, nil
+}
+
+// ScheduleProbe triggers an immediate probe for a tenant+surface (internal API).
+func (s *perceptionServer) ScheduleProbe(tenantID string, surface entityv1.Surface) {
+	s.scheduler.ScheduleProbe(tenantID, surface)
+}
+
+// GetConnectors returns all registered connectors.
+func (s *perceptionServer) GetConnectors() []connector.Connector {
+	return s.connectorReg.All()
+}
+
+// GetConsentStatus returns consent status for a tenant+surface.
+func (s *perceptionServer) GetConsentStatus(tenantID string, surface entityv1.Surface) (bool, entityv1.IdentificationStrategy, string) {
+	return s.consentLedger.ValidateProbe(tenantID, surface)
+}
+
+// RunFullCycle executes a full M×N×K probe cycle for a tenant (internal API).
+func (s *perceptionServer) RunFullCycle(ctx context.Context, tenantID string, surfaces []entityv1.Surface, queries []string) (int, int, map[entityv1.Surface]int) {
+	return s.scheduler.RunProbeCycle(ctx, tenantID, surfaces, queries)
 }
 
 // syntheticAnswerEvent creates a stub AnswerEvent for M3-thin testing.
 // In M4, this comes from the actual probe fleet (Go workers calling surfaces via gateway).
-func (s *perceptionServer) syntheticAnswerEvent(tenantId string, surface entityv1.Surface, idemKey string) *entityv1.AnswerEvent {
+func (s *perceptionServer) syntheticAnswerEvent(tenantID string, surface entityv1.Surface, idemKey string) *entityv1.AnswerEvent {
 	return &entityv1.AnswerEvent{
-		Id:            fmt.Sprintf("%s-%s-answer-%s", tenantId, surface.String(), idemKey),
-		TenantId:      tenantId,
-		ProbeId:       fmt.Sprintf("%s-probe-%s", tenantId, surface.String()),
+		Id:            fmt.Sprintf("%s-%s-answer-%s", tenantID, surface.String(), idemKey),
+		TenantId:      tenantID,
+		ProbeId:       fmt.Sprintf("%s-probe-%s", tenantID, surface.String()),
 		Surface:       surface,
 		QueryText:     "Brand query for " + surface.String(),
-		QueryId:       fmt.Sprintf("%s-query-%s", tenantId, surface.String()),
+		QueryId:       fmt.Sprintf("%s-query-%s", tenantID, surface.String()),
 		ModelId:       "synthetic-probe-m3",
 		SampleIdx:     1,
-		VerbatimAnswer: "Sample answer from " + surface.String() + " for tenant " + tenantId,
+		VerbatimAnswer: "Sample answer from " + surface.String() + " for tenant " + tenantID,
 		CapturedAt:    timestamppb.Now(),
 	}
 }
 
 // extractViaGateway calls the gateway Extract seam via ConnectRPC.
 // M3-thin: real ConnectRPC call. M4-thicken: retries, circuit breaker, metrics.
-func (s *perceptionServer) extractViaGateway(ctx context.Context, tenantId string, answer *entityv1.AnswerEvent, idemKey string) []*eventv1.Assertion {
+func (s *perceptionServer) extractViaGateway(ctx context.Context, tenantID string, answer *entityv1.AnswerEvent, idemKey string) []*eventv1.Assertion {
 	req := connect.NewRequest(&servicev1.ExtractRequest{
-		TenantId:   tenantId,
+		TenantId:   tenantID,
 		Answer:     answer,
 		IdempotencyKey: idemKey,
 	})
 	// Inject tenant_id from validated session (CLAUDE.md §8 - gateway never trusts client-supplied tenant_id)
-	req.Header().Set("x-tenant-id", tenantId)
+	req.Header().Set("x-tenant-id", tenantID)
 
 	resp, err := s.gatewayClient.Extract(ctx, req)
 	if err != nil {
@@ -156,15 +261,15 @@ func (s *perceptionServer) extractViaGateway(ctx context.Context, tenantId strin
 }
 
 // assertionToAssertedNode converts an Extract assertion to an AssertedNode for KG storage.
-func (s *perceptionServer) assertionToAssertedNode(tenantId string, a *eventv1.Assertion, probeId string) *entityv1.AssertedNode {
-	entityId := a.SubjectId
+func (s *perceptionServer) assertionToAssertedNode(tenantID string, a *eventv1.Assertion, _ string) *entityv1.AssertedNode {
+	entityID := a.SubjectId
 	if a.GetObjectId() != "" {
-		entityId = a.GetObjectId()
+		entityID = a.GetObjectId()
 	}
 
 	return &entityv1.AssertedNode{
-		Id:        fmt.Sprintf("%s-%s", tenantId, entityId),
-		TenantId:  tenantId,
+		Id:        fmt.Sprintf("%s-%s", tenantID, entityID),
+		TenantId:  tenantID,
 		EntityType: entityv1.EntityType(0),
 		ValidTime: a.GetValidTime(),
 		TxTime:    a.GetTxTime(),

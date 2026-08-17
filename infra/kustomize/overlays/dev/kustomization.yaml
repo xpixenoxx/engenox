@@ -29,6 +29,7 @@ images:
   - name: us-central1-docker.pkg.dev/engenox-dev/services/measurement
     newTag: latest
 
+
 replicas:
   - name: engenox-control-plane
     count: 1

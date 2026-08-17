@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cnpg-controller-manager
+  namespace: cnpg-system
+spec:
+  template:
+    spec:
+      containers:
+      - name: manager
+        ports:
+        - containerPort: 8080
+          name: metrics
+        livenessProbe:
+          httpGet:
+            path: /readyz
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 1
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 1
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /readyz
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 1
+          failureThreshold: 60
+        volumeMounts:
+        - mountPath: /controller
+          name: scratch-data
+      volumes:
+      - emptyDir: {}
+        name: scratch-data

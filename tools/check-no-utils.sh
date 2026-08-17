@@ -25,6 +25,7 @@ OFFENDERS="$(find "$ROOT/services" "$ROOT/libs" "$ROOT/pkg" "$ROOT/web" \
   ! -path '*/node_modules/*' \
   ! -path '*/generated/*' \
   ! -path '*/dist/*' \
+  ! -path '*/.venv/*' \
   ! -path '*/.keep' \
   2>/dev/null \
   | grep -E '/(utils|helpers|misc|shared)\.(ts|tsx|js|mjs|cjs|go|py)$' \

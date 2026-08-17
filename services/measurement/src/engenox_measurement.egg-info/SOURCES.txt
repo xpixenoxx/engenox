@@ -1,7 +1,15 @@
 pyproject.toml
 src/engenox/measurement/__init__.py
 src/engenox/measurement/main.py
-src/engenox/measurement/main_grpc.py
+src/engenox/measurement/__tests__/test_api.py
+src/engenox/measurement/__tests__/test_conformal.py
+src/engenox/measurement/__tests__/test_corpus_writer.py
+src/engenox/measurement/__tests__/test_dml.py
+src/engenox/measurement/__tests__/test_foreign_change.py
+src/engenox/measurement/__tests__/test_quarantine.py
+src/engenox/measurement/__tests__/test_r2_restore.py
+src/engenox/measurement/__tests__/test_reconciliation.py
+src/engenox/measurement/__tests__/test_scm.py
 src/engenox/measurement/api/__init__.py
 src/engenox/measurement/api/main.py
 src/engenox/measurement/api/routes.py
@@ -16,7 +24,8 @@ src/engenox/measurement/estimators/conformal.py
 src/engenox/measurement/estimators/dml.py
 src/engenox/measurement/estimators/foreign_change.py
 src/engenox/measurement/estimators/scm.py
-src/engenox/measurement/grpc/server.py
+src/engenox/measurement/quarantine/__init__.py
+src/engenox/measurement/quarantine/guard.py
 src/engenox_measurement.egg-info/PKG-INFO
 src/engenox_measurement.egg-info/SOURCES.txt
 src/engenox_measurement.egg-info/dependency_links.txt

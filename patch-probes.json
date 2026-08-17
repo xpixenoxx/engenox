@@ -1,0 +1,3 @@
+[
+  {"op": "add", "path": "/spec/probes", "value": {"startup":{"spec":{"httpGet":{"scheme":"HTTP","port":8000,"path":"/healthz"}}},"readiness":{"spec":{"httpGet":{"scheme":"HTTP","port":8000,"path":"/readyz"}}},"liveness":{"spec":{"httpGet":{"scheme":"HTTP","port":8000,"path":"/healthz"}}}}}
+]

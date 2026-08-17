@@ -7,17 +7,51 @@ packages:
   - "web"
   - "design-system"
   - "tools"
+  - "e2e"
   # libs TS bindings land per-ticket (e.g. libs/kg/ts/) — add to this list when their package.json lands.
   # A1 (E23) lands the four frozen-aligned foundation libs: kg · cedar · crypto · verifier (24 §3
   # — libs sit below the service layer; the seam port is the generated gRPC client from contracts,
   # not a separate libs/seam). pnpm silently skips globs without package.json, so libs/*/ts is safe
   # against the still-.keep-only libs (fixtures, otel).
   - "libs/*/ts"
-
-  # pnpm 11's build-script approval — the `allowBuilds` map (dep name → bool). pnpm 11 no longer reads
-  # package.json's `pnpm` field, and ignores the older `onlyBuiltDependencies` list for nx (it re-inserts
-  # a `set this to true or false` placeholder on `pnpm install` and expects it filled). nx is the only
-  # trusted dep with a postinstall; pre-approving it makes `pnpm install` exit 0 in CI (the T01 acceptance).
 allowBuilds:
+  '@biomejs/biome': true
+  '@bufbuild/buf': true
+  '@swc/core': true
   esbuild: true
   nx: true
+  protobufjs: true
+  sharp: true
+  tree-sitter: true
+  tree-sitter-c-sharp: true
+  tree-sitter-elixir: true
+  tree-sitter-go: true
+  tree-sitter-javascript: true
+  tree-sitter-kotlin@https://codeload.github.com/fwcd/tree-sitter-kotlin/tar.gz/f66d2908542e93c0204c6c241f794afe4e9cd5d1: true
+  tree-sitter-php: true
+  tree-sitter-python: true
+  tree-sitter-ruby: true
+  tree-sitter-rust: true
+  tree-sitter-typescript: true
+minimumReleaseAgeExclude:
+  - hono@4.12.30
+  - tsdown@0.22.8
+# pnpm 11's build-script approval — the `allowBuilds` map (dep name → bool). pnpm 11 no longer reads
+# package.json's `pnpm` field, and ignores the older `onlyBuiltDependencies` list for nx (it re-inserts
+# a `set this to true or false` placeholder on `pnpm install` and expects it filled). nx is the only
+# trusted dep with a postinstall; pre-approving it makes `pnpm install` exit 0 in CI (the T01 acceptance).
+settings:
+  allowBuilds:
+    '@biomejs/biome': true
+    esbuild: true
+    nx: true
+  hoistPattern:
+    - "*"
+    - "!*types/*"
+    - "!*@types/*"
+  minimumReleaseAgeExclude:
+    - hono@4.12.30
+    - zod@4.4.3
+    - "@hono/zod-validator@0.8.0"
+  linkWorkspacePackages: true
+  blockExoticSubdeps: false

@@ -1,0 +1,30 @@
+# temporal-dynamic-config.yaml — Dynamic configuration for Temporal
+# Override defaults for local development
+
+# Increase history retention for local debugging
+history:
+  retention:
+    max_age: "168h"  # 7 days
+    max_visibility_age: "168h"
+
+# Allow longer workflow execution times for local debugging
+workflow:
+  execution:
+    default_workflow_task_timeout: "30m"
+    default_activity_timeout: "10m"
+
+# Reduce resource limits for local dev
+resource:
+  limits:
+    max_workflow_task_execution_time: "60s"
+    max_activity_execution_time: "30s"
+
+# Enable debug logging
+log:
+  level: "debug"
+  format: "json"
+
+# Metrics
+metrics:
+  prometheus:
+    listen_address: "0.0.0.0:9090"

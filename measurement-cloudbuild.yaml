@@ -1,0 +1,7 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'us-central1-docker.pkg.dev/engenox-stage/services/measurement:latest', '-f', 'services/measurement/Dockerfile', '.']
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'us-central1-docker.pkg.dev/engenox-stage/services/measurement:latest']
+images:
+- 'us-central1-docker.pkg.dev/engenox-stage/services/measurement:latest'

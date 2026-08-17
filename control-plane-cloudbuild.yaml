@@ -1,0 +1,7 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'us-central1-docker.pkg.dev/engenox-stage/services/control-plane:latest', '-f', 'services/control-plane/Dockerfile', '.']
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'us-central1-docker.pkg.dev/engenox-stage/services/control-plane:latest']
+images:
+- 'us-central1-docker.pkg.dev/engenox-stage/services/control-plane:latest'

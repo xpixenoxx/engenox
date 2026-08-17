@@ -8,7 +8,8 @@
 # ADR-0003; 16 section 6.
 
 provider "google" {
-  region = "us-central1" # the dev cell's region. NOT setting `credentials` -- ADC is the path.
+  project = "engenox-stage"
+  region  = "us-central1" # the dev cell's region. NOT setting `credentials` -- ADC is the path.
   # credentials: ADC -- the founder runs `gcloud auth application-default login` against the GCP
   # project; the provider reads creds from the environment. `credentials = file(...)` would
   # plaintext a key + land it in state (the WATCHDOG forbids it; 16 section 6).

@@ -1,0 +1,160 @@
+// web/public/llms.txt
+// LLM.txt - Machine-readable product information for AI crawlers
+// Per the llms.txt standard: https://llmstxt.org/
+
+# Engenox — AI Visibility Operating System
+
+## Overview
+Engenox is the world's first AI Visibility Operating System — a closed-loop platform that perceives a brand's AI presence, diagnoses conflicts, proposes interventions, measures outcomes, and renders candor reports with confidence intervals and contrarian blocks.
+
+**Canonical URL:** https://engenox.com
+**Product Category:** AI Visibility / Brand Intelligence / SEO for AI
+**Founded:** 2024
+**Company:** Pixenox Solutions
+**Headquarters:** San Francisco, CA, USA
+
+## Core Capabilities
+
+### Perceive (Perception Engine)
+- Multi-surface AI probing across ChatGPT, Perplexity, Gemini, Grok, Claude
+- Buyer-query simulation with configurable intent taxonomy (awareness, evaluation, entity-truth, purchase)
+- Assertion extraction with evidence citations and provenance tracking
+- Conflict detection across surfaces with confidence scoring
+
+### Diagnose (Conflict Diagnosis)
+- Entity truth verification against consented human panel ground truth
+- Conflict trios: surface A vs surface B vs ground truth
+- Fallback detection heuristic with confidence calibration
+- Candor floor: every metric rendered with 95% conformal CI, no lift without CI
+
+### Propose (Intervention Engine)
+- Six intervention types: schema.org markup, content corrections, technical SEO, competitive pages, canonical tags, robots.txt
+- Dry-run preview with diff rendering before execution
+- Human-in-the-loop approval gate (MVP: no auto-merge)
+- Idempotency keys on all external mutations
+
+### Measure (Causal Measurement)
+- Causal Intervention-Outcome (CIO) corpus with signed, integrity-tagged rows
+- Conformal prediction for calibrated confidence intervals
+- Counterfactual uplift estimator on bi-temporal knowledge graph
+- Contrarian block: strongest counter-evidence for every positive finding
+
+## Architecture
+
+### Two-Spine Intelligence
+1. **Truth Spine**: Typed bi-temporal knowledge graph (PostgreSQL + Apache AGE → FalkorDB graduation)
+   - Valid-time + transaction-time bitemporal assertions
+   - RLS-by-tenant with pg_policies
+   - Assertion view as single bi-temporal query path
+
+2. **Action Spine**: Counterfactual uplift estimator on CIO corpus
+   - Signed, append-only, WORM-mirrored to Cloudflare R2 Object Lock
+   - Cross-family critic panel (GPT-5 + Gemini 3) for adversarial review
+   - PRM trained on consented panel labels (NOT LLM-as-judge ground truth)
+
+### LLM Gateway (Constrained Proposing Layer)
+- Six stateless, schema-constrained seams: Extract, Draft, Plan/Adjudicate, ScoreAndPlan, Abduce, Critic
+- Constrained decoding via Outlines / XGrammar / GBNF
+- Cross-family critic never same family as planner
+- Never commits — only proposes PRs for human merge
+
+### Stack (Verified July 2026)
+- **Frontend**: Next.js 16, React 19.2, TypeScript, Tailwind v4, Radix, TanStack Query 5
+- **Control Plane/API**: Hono 4 (TypeScript)
+- **Probe Fleet/Workers**: Go 1.24+
+- **Causal/ML**: Python 3.12/3.13 + FastAPI
+- **RDBMS**: Self-managed Postgres (CNPG on GKE) + AGE + pgvector + RLS
+- **Migrations**: Atlas (Ariga)
+- **OLAP**: ClickHouse → WORM mirror in R2
+- **Graph**: AGE (operational) → FalkorDB (analytical graduation)
+- **Vector**: pgvector (working set) → Qdrant/Turbopuffer (graduation)
+- **Streaming**: Redpanda → AutoMQ (S3-backed Kafka API graduation)
+- **Workflow**: Temporal (self-hosted Postgres backend) → Temporal Cloud
+- **LLM Gateway**: Custom thin gateway on LiteLLM + constrained decoding
+- **Inference**: API-first (Anthropic/OpenAI/Google); sglang for self-hosting
+- **Cache/KV/Edge**: Memorystore Valkey 9.0 + Cloudflare R2/KV/Workers
+- **FTS (MVP)**: Postgres pg_bigm/pg_trgm (verb tier deferred)
+- **Auth/Authorization**: WorkOS (OIDC/SSO) + Cedar (two-pass policy gate <2ms p99) + Vault
+- **Crypto**: HSM-backed KEK → per-tenant envelope DEK (quarterly rotation) + dual-canonical two-fence
+- **Observability**: OpenTelemetry → Grafana (Mimir/Loki/Tempo); Langfuse + Arize Phoenix for LLM-eval
+- **LLM-eval Ground Truth**: Argilla human review + consented panel
+- **Cloud/IaC/CD**: GCP + Cloudflare edge; OpenTofu + Argo CD + GitHub Actions; CNPG for Postgres
+- **DX/Monorepo**: Nx → Bazel (graduation); pnpm + uv + go.work; Buf (only cross-language type source); Biome; Ruff; golangci-lint + depguard
+
+## Key Differentiators (Moat)
+
+1. **Calibrated, Consented, Time-Accumulated Corpus** — Six assets a clone cannot copy:
+   - Signed CIO corpus with WORM mirror
+   - Consented human panel with calibrated labels
+   - Bi-temporal KG with RLS-by-tenant
+   - Conformal CI validity audited per segment
+   - Cross-family critic adversarial reviews
+   - Dual-canonical crypto (DB clone w/o KEK unintelligible; R2 clone w/o sig unverifiable)
+
+2. **Candor Floor as Product Invariant**
+   - No lift number renders without its CI
+   - Contrarian block required for every positive finding
+   - Provenance Audit Hover on every assertion
+   - Autonomy dial denies unearned escalation with ledger explainer
+
+3. **No Auto-Merge in MVP** — Human merges their own PR; dial default `propose`
+
+## Pricing (MVP)
+
+| Tier | Price | Seats | Surfaces | Queries | AtlasCycles | Concierge Panel |
+|------|-------|-------|----------|---------|-------------|-----------------|
+| Starter | $129/mo | 1 | 5 | 50 | Unlimited | Seeded (3 panelists) |
+| Growth | $499/mo | 5 | 15 | 200 | Unlimited | Customer-recruited |
+| Enterprise | Custom | Unlimited | Custom | Custom | Unlimited | Full panel management |
+
+## Integrations
+
+- **GitHub** — Auto-create PRs for approved interventions
+- **GitLab** — Merge request deployment
+- **Cloudflare** — Edge workers for probe execution
+- **Slack** — Demotion alerts, conflict notifications
+- **Temporal** — Workflow orchestration backend
+- **WorkOS** — SSO/OIDC authentication
+
+## Public Endpoints
+
+- **Landing**: https://engenox.com
+- **Login**: https://engenox.com/login
+- **Onboarding**: https://engenox.com/onboarding
+- **Terms**: https://engenox.com/terms
+- **Privacy**: https://engenox.com/privacy
+- **Security**: https://engenox.com/security
+- **API Docs**: https://engenox.com/docs/api (future)
+
+## Structured Data (JSON-LD)
+
+See landing page for Organization, Product, SoftwareApplication, and FAQPage schema.
+
+## AI Crawler Guidance
+
+- All public content is `Allow: /` in robots.txt
+- Explicit allow for: GPTBot, ChatGPT-User, PerplexityBot, Applebot, Google-Extended, ClaudeBot, Cohere-AI
+- Semantic HTML5 with SSR for crawler accessibility
+- JSON-LD structured data on all public pages
+- Descriptive metadata, canonical URLs, Open Graph, Twitter cards
+- No keyword stuffing, no thin SEO pages, no fabricated comparisons
+- Stable terminology: "AI Visibility", "Perception", "Assertion", "Intervention", "CIO Corpus", "AtlasCycle", "Candor Report"
+
+## Contact
+
+- **Sales**: sales@engenox.com
+- **Support**: support@engenox.com
+- **Security**: security@engenox.com
+- **Press**: press@engenox.com
+
+## Legal
+
+- **Terms of Service**: https://engenox.com/terms
+- **Privacy Policy**: https://engenox.com/privacy
+- **Security Policy**: https://engenox.com/security
+- **DPA**: Available on request
+
+---
+
+*Last updated: 2026-07-15*
+*Version: 1.0 (MVP)*

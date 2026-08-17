@@ -225,5 +225,8 @@ app.post("/v1/critique", zValidator("json", CritiqueRequestZod), async (c) => {
 // Health check (no auth, used by infra)
 app.get("/health", (c) => c.json({ status: "ok", service: "gateway" }));
 
+// Readiness check (no auth, used by infra)
+app.get("/ready", (c) => c.json({ status: "ready", service: "gateway" }));
+
 export type AppType = typeof app;
 export { app };

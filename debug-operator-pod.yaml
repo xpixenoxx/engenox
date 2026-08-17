@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debug-operator
+  namespace: cnpg-system
+spec:
+  serviceAccountName: cnpg-manager
+  tolerations:
+  - key: "workload"
+    operator: "Equal"
+    value: "database"
+    effect: "NoSchedule"
+  containers:
+  - name: debug-operator
+    image: ghcr.io/cloudnative-pg/cloudnative-pg:1.24.0
+    command: ["/manager"]
+    args: ["controller", "--leader-elect", "--config-map-name=cnpg-controller-manager-config", "--webhook-port=0"]
+  restartPolicy: Never

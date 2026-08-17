@@ -14,7 +14,7 @@ const transport = createConnectTransport({
   httpVersion: "1.1",
 });
 
-export const perceptionClient = createClient(PerceptionService, transport);
+export const perceptionClient = createClient(PerceptionService as any, transport);
 
 // Helper to call ProbeSurface
 export async function probeSurface(input: {
@@ -22,7 +22,7 @@ export async function probeSurface(input: {
   surface: number; // Surface enum
   idempotencyKey: string;
 }) {
-  return perceptionClient.probeSurface({
+  return (perceptionClient as any).probeSurface({
     tenantId: input.tenantId,
     surface: input.surface,
     idempotencyKey: input.idempotencyKey,
@@ -34,7 +34,7 @@ export async function assertNode(input: {
   node: any; // AssertedNode
   idempotencyKey: string;
 }) {
-  return perceptionClient.assert({
+  return (perceptionClient as any).assert({
     node: input.node,
     idempotencyKey: input.idempotencyKey,
   });

@@ -8,12 +8,21 @@
   "scripts": {
     "lint:boundary": "dependency-cruise -c .dependency-cruiser.cjs --output-type err pkg/contracts services libs web && bash tools/check-contract-graph.sh && bash tools/check-no-utils.sh && bash tools/check-lint-fires.sh",
     "lint:boundary:win": "dependency-cruise -c .dependency-cruiser.cjs --output-type err pkg/contracts services libs web && powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/check-contract-graph.ps1 && powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/check-no-utils.ps1",
-    "lint:py": "uv run lint-imports",
+    "lint:py": "uv run import-linter lint",
     "lint:go": "golangci-lint run --config .golangci.yaml ./pkg/contracts/...",
     "lint": "pnpm lint:boundary && pnpm lint:py && pnpm lint:go"
   },
   "devDependencies": {
+    "@bufbuild/buf": "^1.71.0",
+    "@bufbuild/protobuf": "^2.12.1",
+    "@bufbuild/protoc-gen-es": "^2.12.1",
     "dependency-cruiser": "^18.0.0",
-    "nx": "23.0.1"
+    "nx": "23.0.1",
+    "typescript": "~5.7.3",
+    "vitest": "^2.1.9"
+  },
+  "dependencies": {
+    "@hono/zod-validator": "^0.8.0",
+    "zod": "^4.4.3"
   }
 }

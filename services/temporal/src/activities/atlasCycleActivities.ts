@@ -7,6 +7,8 @@
 // Cites: 11 §2 (control-plane responsibilities + six seams) + 00 §2 inv 3 (Temporal owns loop)
 //        + ADR-0007 (thin column: typed plan DAG, one real activity per phase).
 
+console.error("[ATLAS-ACTIVITY-DEBUG-12345] Module loaded");
+
 import { type BrandCard } from "@engenox/contracts/entity/v1/brand";
 import { Assertion } from "@engenox/contracts/event/v1";
 import { probeSurface } from "../client/perceptionClient.js";
@@ -57,17 +59,33 @@ export async function runPerceptionPhase(input: {
 }): Promise<PerceptionPhaseResult> {
   const { tenantId, surfaceIds, idempotencyKey } = input;
 
+  // Write to file in worker's working directory to prove execution
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const logPath = path.join(process.cwd(), 'activity-execution.log');
+    fs.appendFileSync(logPath, `[${new Date().toISOString()}] runPerceptionPhase pid=${process.pid} worker_cwd=${process.cwd()} tenantId=${tenantId}\n`);
+  } catch (e) {
+    console.error('[ATLAS-ACTIVITY] File write failed:', e);
+  }
+
+  console.error(`[ATLAS-ACTIVITY] runPerceptionPhase START pid=${process.pid} tenantId=${tenantId} surfaces=${surfaceIds.join(",")} idempotencyKey=${idempotencyKey}`);
+
+  if (!tenantId) throw new Error("NO TENANT ID - function not executing properly");
+
   const conflictIds: string[] = [];
 
   for (const surfaceId of surfaceIds) {
     // M3-thin: call PerceptionService.ProbeSurface via gRPC client
     const surfaceEnum = surfaceId === "CHATGPT" ? 1 : surfaceId === "PERPLEXITY" ? 2 : 0; // Surface enum values
+    console.error(`[ATLAS-ACTIVITY] Probing surface: ${surfaceId} (enum: ${surfaceEnum})`);
     const probeResp = await probeSurface({
       tenantId,
       surface: surfaceEnum,
       idempotencyKey: `${idempotencyKey}-perception-${surfaceId}`,
     });
 
+    console.error(`[ATLAS-ACTIVITY] Probe response: ${probeResp?.assertions?.length ?? 0} assertions, probeResp=${JSON.stringify(probeResp)}`);
     // For each assertion in probeResp.assertions, create a conflict ID.
     // M4-thicken: DecisionService.ProposeInterventions will adjudicate these
     for (const assertion of probeResp.assertions) {

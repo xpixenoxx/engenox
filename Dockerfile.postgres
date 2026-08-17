@@ -1,0 +1,27 @@
+# Dockerfile.postgres — Postgres 17 with Apache AGE (PG17 branch) and pgvector 0.8.2
+# Build: docker build -f Dockerfile.postgres -t engenox/postgres:pg17-age-pgvector .
+# Used by docker-compose.dev.yml
+
+FROM postgres:17-bookworm
+
+# Install build dependencies for AGE + pgvector from apt if available
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    postgresql-server-dev-17 \
+    flex \
+    bison \
+    git \
+    ca-certificates \
+    postgresql-17-pgvector \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build and install Apache AGE from PG17 branch (no stable tag yet for PG17)
+RUN git clone --branch PG17 --depth 1 https://github.com/apache/age.git /tmp/age \
+    && cd /tmp/age \
+    && make install \
+    && rm -rf /tmp/age
+
+# Verify extensions are available
+RUN pg_config --pkglibdir && ls -la /usr/lib/postgresql/17/lib/ | grep -E 'age|vector'
+
+# Default postgres entrypoint handles init scripts

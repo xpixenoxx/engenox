@@ -1,0 +1,25 @@
+# Mimir minimal local config
+server:
+  http_listen_port: 9010
+  grpc_listen_port: 9009
+
+common:
+  path_prefix: /data
+  storage:
+    filesystem:
+      chunks_directory: /data/chunks
+      rules_directory: /data/rules
+  ring:
+    kvstore:
+      store: inmemory
+
+ingester:
+  heartbeat_period: 5s
+  chunk_idle_period: 10m
+  max_chunk_age: 2h
+
+querier:
+  query_ingesters_within: 1h
+
+alertmanager:
+  external_url: ""

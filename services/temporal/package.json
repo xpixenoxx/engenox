@@ -1,0 +1,38 @@
+{
+  "name": "@engenox/temporal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Temporal workflows + activities — the closed-loop orchestration engine (AtlasCycle + InterventionSaga). Self-hosted on CNPG Postgres backend (ADR-0003 / ADR-0007 M3-thin).",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch src/worker.ts",
+    "build": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "biome check --apply src/"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.12.1",
+    "@connectrpc/connect": "^2.1.2",
+    "@connectrpc/connect-node": "^2.1.2",
+    "@engenox/cedar": "workspace:*",
+    "@engenox/contracts": "workspace:*",
+    "@engenox/crypto": "workspace:*",
+    "@engenox/kg": "workspace:*",
+    "@engenox/verifier": "workspace:*",
+    "@temporalio/activity": "^1.11.0",
+    "@temporalio/client": "^1.11.0",
+    "@temporalio/worker": "^1.11.0",
+    "@temporalio/workflow": "^1.11.0",
+    "neverthrow": "^8.2.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "@types/node": "^26.1.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

@@ -35,7 +35,7 @@ const DEFAULT_CONFIG: ReviewerConfig = {
 
 // Pre-compiled patterns (matching Go implementation exactly)
 const URL_PATTERN = /https?:\/\/[^\s"'\]\)]+/;
-const REDIRECT_PATTERN = /(?i)(location\.href\s*=|meta\s+http-equiv\s*=\s*["']refresh["']|window\.location\s*=)/;
+const REDIRECT_PATTERN = /(location\.href\s*=|meta\s+http-equiv\s*=\s*["']refresh["']|window\.location\s*=)/i;
 const SCRIPT_PATTERN = /["']scripts["']\s*:/;
 const PACKAGE_JSON_PATTERN = /["'](?:dependencies|devDependencies|peerDependencies|optionalDependencies)["']\s*:/;
 const MANIFEST_FILES = ["go.mod", "Cargo.toml", "pyproject.toml", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"];

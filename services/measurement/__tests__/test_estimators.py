@@ -5,11 +5,11 @@ import pandas as pd
 import pytest
 
 from engenox.measurement.estimators import (
+    DetectorSignal,
+    DMLStatus,
     SCMStatus,
     estimate_scm,
     estimate_scm_placebo,
-    DMLStatus,
-    DetectorSignal,
 )
 from engenox.measurement.estimators.conformal import apply_conformal_correction
 from engenox.measurement.estimators.dml import estimate_dml

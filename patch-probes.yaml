@@ -1,0 +1,20 @@
+spec:
+  probes:
+    startup:
+      spec:
+        httpGet:
+          scheme: HTTP
+          port: 8000
+          path: /healthz
+    readiness:
+      spec:
+        httpGet:
+          scheme: HTTP
+          port: 8000
+          path: /readyz
+    liveness:
+      spec:
+        httpGet:
+          scheme: HTTP
+          port: 8000
+          path: /healthz

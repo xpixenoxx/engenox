@@ -1,0 +1,19 @@
+﻿steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--platform=linux/amd64'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/engenox-stage/services/control-plane:latest'
+      - '-f'
+      - 'services/control-plane/Dockerfile'
+      - '.'
+    env:
+      - 'CI=true'
+
+images:
+  - 'us-central1-docker.pkg.dev/engenox-stage/services/control-plane:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'

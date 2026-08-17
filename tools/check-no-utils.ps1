@@ -12,7 +12,7 @@ $fail = 0
 
 $offenders = Get-ChildItem -Path $dirs -Recurse -File -ErrorAction SilentlyContinue |
   Where-Object {
-    ($_.FullName -notmatch '\\(node_modules|generated|dist)\\') -and
+    ($_.FullName -notmatch '\\.(venv|git|node_modules|dist|generated)') -and
     ($_.Name -match '^(utils|helpers|misc|shared)\.(ts|tsx|js|mjs|cjs|go|py)$')
   }
 if ($offenders) {

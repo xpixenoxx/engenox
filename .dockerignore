@@ -1,0 +1,93 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+dist
+build
+*.tsbuildinfo
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+
+# Test/coverage
+coverage
+.nyc_output
+*.lcov
+
+# Turbo
+.turbo
+.turborepo
+
+# Next.js
+.next
+out
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.venv
+venv
+*.egg-info
+pip-wheel-metadata
+.pytest_cache
+
+# Build artifacts
+*.tgz
+*.tar.gz
+
+# Temporary
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Cloud
+.gcloudignore
+
+# Local dev
+.env
+.env.local
+.env.*.local
+
+# Cache
+.cache
+.parcel-cache
+.esbuild
+.vercel
+
+# pnpm
+pnpm-store
+
+# Test fixtures
+*.test.ts
+*.spec.ts
+__tests__
+__fixtures__
+
+# Generated
+.pnp
+.pnp.js
+
+# Scripts not needed for build
+scripts/
+tools/
+docs/
+adr/
+datasets/
+e2e/
+design-system/
+infra/
+web/

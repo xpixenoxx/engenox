@@ -7,7 +7,9 @@
       "@engenox/crypto/*": ["../../libs/crypto/ts/src/*"],
       "@engenox/kg/*": ["../../libs/kg/ts/src/*"]
     },
-    "outDir": "dist"
+    "outDir": "dist",
+    "noEmit": false,
+    "allowImportingTsExtensions": false
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

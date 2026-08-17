@@ -1,0 +1,67 @@
+# grafana-datasources.yaml — Grafana datasource provisioning
+apiVersion: 1
+
+datasources:
+  - name: Mimir
+    type: prometheus
+    url: http://mimir:9009
+    access: proxy
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: "15s"
+      queryTimeout: "60s"
+
+  - name: Loki
+    type: loki
+    url: http://loki:3100
+    access: proxy
+    editable: false
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - name: traceID
+          matcherRegex: "trace[=:][\"']?([0-9a-f]{32})"
+          url: "$${__value.raw}"
+          datasourceUid: tempo
+
+  - name: Tempo
+    type: tempo
+    url: http://tempo:3200
+    access: proxy
+    editable: false
+    jsonData:
+      httpMethod: GET
+      tracesToLogs:
+        datasourceUid: loki
+        tags: ['trace_id', 'span_id']
+        spanStartTimeShift: "1h"
+        spanEndTimeShift: "1h"
+        filterByTraceID: true
+        filterBySpanID: true
+
+  - name: ClickHouse
+    type: clickhouse
+    url: http://clickhouse:8123
+    access: proxy
+    editable: false
+    jsonData:
+      defaultDatabase: engenox
+      dialect: 24.6
+    secureJsonData:
+      user: default
+      password: clickhouse
+
+  - name: Postgres
+    type: postgres
+    url: postgres:5432
+    access: proxy
+    editable: false
+    jsonData:
+      database: engenox
+      sslmode: disable
+      postgresVersion: 1700
+      timescaledb: false
+    secureJsonData:
+      user: engenox
+      password: engenox

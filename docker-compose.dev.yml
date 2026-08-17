@@ -1,0 +1,388 @@
+# docker-compose.dev.yml — Local development stack for Engenox
+# Spins up: Postgres+AGE+pgvector, Valkey 9.0, Redpanda, Temporal, MinIO (R2 sim), ClickHouse, OTel Collector, Grafana Mimir/Loki/Tempo, Langfuse
+# Run: docker-compose -f docker-compose.dev.yml up -d
+# View logs: docker-compose -f docker-compose.dev.yml logs -f <service>
+
+services:
+  # ---------------------------------------------------------------------------
+  # Postgres 17 + Apache AGE 1.6.0 + pgvector 0.8.2
+  # Custom image built from Dockerfile.postgres
+  # ---------------------------------------------------------------------------
+  postgres:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    image: engenox/postgres:pg17-age-pgvector
+    container_name: engenox-postgres
+    environment:
+      POSTGRES_USER: engenox
+      POSTGRES_PASSWORD: engenox
+      POSTGRES_DB: engenox
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-age.sql:/docker-entrypoint-initdb.d/01-init-age.sql
+      - ./scripts/init-pgvector.sql:/docker-entrypoint-initdb.d/02-init-pgvector.sql
+      - ./scripts/init-rls.sql:/docker-entrypoint-initdb.d/03-init-rls.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U engenox -d engenox && psql -U engenox -d engenox -c \"SELECT 1 FROM pg_extension WHERE extname = 'age'\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - engenox-local
+
+  # ---------------------------------------------------------------------------
+  # Valkey 9.0 (Memorystore-compatible, Redis API)
+  # ---------------------------------------------------------------------------
+  valkey:
+    image: valkey/valkey:9.0
+    container_name: engenox-valkey
+    command: ["valkey-server", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru", "--save", "60", "1"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - engenox-local
+
+  # ---------------------------------------------------------------------------
+  # Redpanda (Kafka API compatible, simpler than Kafka+ZK)
+  # Used for event streaming between services
+  # ---------------------------------------------------------------------------
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.1.10
+    container_name: engenox-redpanda
+    command:
+      - redpanda
+      - start
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:9092
+      - --rpc-addr=0.0.0.0:33145
+      - --advertise-rpc-addr=redpanda:33145
+      - --schema-registry-addr=0.0.0.0:8081
+      - --node-id=1
+    ports:
+      - "9092:9092"   # Kafka API
+      - "9644:9644"   # Admin API
+      - "8081:8081"   # Schema Registry
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health", "--exit-when-healthy"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 15s
+    networks:
+      - engenox-local
+
+  # ---------------------------------------------------------------------------
+  # Temporal (auto-setup: temporal server + UI + internal Postgres)
+  # Uses separate Postgres instance for Temporal persistence
+  # ---------------------------------------------------------------------------
+  temporal:
+    image: temporalio/auto-setup:1.24
+    container_name: engenox-temporal
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=temporal-postgres
+    ports:
+      - "7233:7233"   # gRPC
+      - "8233:8233"   # Web UI
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "tctl", "--address", "temporal:7233", "cluster", "health"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    networks:
+      - engenox-local
+
+  temporal-postgres:
+    image: postgres:16
+    container_name: engenox-temporal-postgres
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    volumes:
+      - temporal_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - engenox-local
+
+  # ---------------------------------------------------------------------------
+  # MinIO (S3-compatible, simulates Cloudflare R2 with Object Lock)
+  # Used for WORM corpus mirror
+  # ---------------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: engenox-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web Console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - engenox-local
+
+  # MinIO client for bucket setup (runs once)
+  minio-init:
+    image: minio/mc:latest
+    container_name: engenox-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 minioadmin minioadmin123 &&
+        mc mb --with-lock local/engenox-corpus || true &&
+        mc mb local/engenox-temporal || true &&
+        echo 'MinIO buckets ready'
+      "
+    networks:
+      - engenox-local
+
+  # ---------------------------------------------------------------------------
+  # ClickHouse (Analytics/OLAP for measurement corpus analytics)
+  # ---------------------------------------------------------------------------
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.6
+    container_name: engenox-clickhouse
+    ports:
+      - "8123:8123"   # HTTP
+      - "9002:9000"   # Native (9002 to avoid MinIO 9000/9001)
+    environment:
+      CLICKHOUSE_DB: engenox
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: clickhouse
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./scripts/init-clickhouse.sql:/docker-entrypoint-initdb.d/init.sql
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - engenox-local
+
+  # ---------------------------------------------------------------------------
+  # OpenTelemetry Collector (traces/metrics/logs -> Grafana stack)
+  # ---------------------------------------------------------------------------
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.112.0
+    container_name: engenox-otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    ports:
+      - "43170:4317"  # OTLP gRPC (avoid conflict with tempo:4317)
+      - "43180:4318"  # OTLP HTTP (avoid conflict with tempo:4318)
+      - "8888:8888"   # Prometheus metrics
+      - "13133:13133" # Health check
+    volumes:
+      - ./scripts/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    depends_on:
+      - grafana
+    networks:
+      - engenox-local
+
+  # ---------------------------------------------------------------------------
+  # Grafana Stack: Mimir (metrics), Loki (logs), Tempo (traces) + Grafana UI
+  # Single binary deployment for local dev (not production)
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: engenox-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./scripts/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - ./scripts/grafana-dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
+      - ./scripts/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - mimir
+      - loki
+      - tempo
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - engenox-local
+
+  mimir:
+    image: grafana/mimir:2.10.0
+    container_name: engenox-mimir
+    command: ["-config.file=/etc/mimir-config.yaml"]
+    user: root
+    ports:
+      - "9009:9009"   # HTTP
+      - "9010:9010"   # gRPC
+    volumes:
+      - mimir_data:/data
+      - ./scripts/mimir-config.yaml:/etc/mimir-config.yaml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9009/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - engenox-local
+
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: engenox-loki
+    command: ["-config.file=/etc/loki-config.yaml"]
+    user: root
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki_data:/data
+      - ./scripts/loki-config.yaml:/etc/loki-config.yaml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - engenox-local
+
+  tempo:
+    image: grafana/tempo:2.4.0
+    container_name: engenox-tempo
+    command: ["-config.file=/etc/tempo-config.yaml"]
+    user: root
+    ports:
+      - "3200:3200"   # HTTP
+      - "4317:4317"   # OTLP gRPC (receive)
+      - "9095:9095"   # gRPC
+    volumes:
+      - tempo_data:/data
+      - ./scripts/tempo-config.yaml:/etc/tempo-config.yaml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3200/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - engenox-local
+
+  # ---------------------------------------------------------------------------
+  # Langfuse (LLM observability - traces, eval, datasets)
+  # ---------------------------------------------------------------------------
+  langfuse:
+    image: langfuse/langfuse:2.33.0
+    container_name: engenox-langfuse
+    ports:
+      - "3001:3000"
+    environment:
+      - DATABASE_URL=postgresql://engenox:engenox@postgres:5432/engenox
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=engenox
+      - POSTGRES_USER=engenox
+      - POSTGRES_PASSWORD=engenox
+      - REDIS_HOST=valkey
+      - REDIS_PORT=6379
+      - CLICKHOUSE_URL=http://clickhouse:8123/engenox
+      - CLICKHOUSE_MIGRATION_URL=clickhouse://default:clickhouse@clickhouse:9000/engenox
+      - CLICKHOUSE_DB=engenox
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=clickhouse
+      - CLICKHOUSE_CLUSTER_ENABLED=false
+      - NEXTAUTH_URL=http://localhost:3001
+      - NEXTAUTH_SECRET=local-dev-secret-change-in-prod
+      - SALT=local-dev-salt
+      - ENCRYPTION_KEY=85f5f56ce9b0f02068137b14892e80fd848cc7892a605a468947f82b383766a1
+      - TELEMETRY_ENABLED=false
+      - EXPERIMENTAL_FEATURES_DISABLED=
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/public/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - engenox-local
+
+  # ---------------------------------------------------------------------------
+  # Nginx reverse proxy for local dev (optional - single entry point)
+  # Maps: localhost/gateway -> gateway:8080, etc.
+  # DISABLED: upstream services don't exist yet
+  # ---------------------------------------------------------------------------
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: engenox-nginx
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./scripts/nginx.dev.conf:/etc/nginx/nginx.conf:ro
+  #   depends_on:
+  #     - grafana
+  #     - langfuse
+  #     - temporal
+  #   networks:
+  #     - engenox-local
+
+volumes:
+  postgres_data:
+  valkey_data:
+  redpanda_data:
+  temporal_postgres_data:
+  minio_data:
+  clickhouse_data:
+  grafana_data:
+  mimir_data:
+  loki_data:
+  tempo_data:
+
+networks:
+  engenox-local:
+    driver: bridge
+    name: engenox-local

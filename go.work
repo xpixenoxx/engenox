@@ -1,12 +1,8 @@
-// go.work — the Go workspace (24 §2 + 24 §8).
-// T01 ships the go-version line only. T02 adds the first `use` directive: the contract
-// module (pkg/contracts/go.mod — github.com/engenox/contracts) lands at T02, so it enters
-// the workspace now; generated/go/ compiles within that module. The service modules
-// (`use ./services/perception`, `./services/action`, `./services/gateway`) land at T11
-// alongside their go.mod files — until then this workspace has one member.
-// `go work sync` on a single-member workspace is a no-op that exits 0.
-go 1.24.0
+go 1.25.0
 
 use (
 	./pkg/contracts
+	./libs/kg/go
+	./services/action
+	./services/perception
 )

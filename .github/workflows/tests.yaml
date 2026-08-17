@@ -56,6 +56,15 @@ jobs:
           pnpm --filter @engenox/crypto test
           pnpm --filter @engenox/verifier test
 
+      - name: "gateway M2-thin seam tests (six seams + budget + verifier)"
+        run: pnpm --filter @engenox/gateway test
+
+      - name: "decision service tests (M3-thin — Adjudicate/Draft/Critique seams)"
+        run: pnpm --filter @engenox/decision test
+
+      - name: "control-plane service tests (M3-thin — AtlasCycle workflow + activities)"
+        run: pnpm --filter @engenox/control-plane test
+
       - name: "contracts surface tests (Go — go test ./... on generated/go)"
         working-directory: pkg/contracts
         run: go test ./...
@@ -71,3 +80,49 @@ jobs:
       # the M1 cell / testcontainer. The M0-thin deferral in the earlier draft is lifted.
       # When libs/kg/test/ lands against the product's Atlas-migrated schema, these gates
       # are the RLS moat the Security reviewer demands.
+
+      - name: "measurement service tests (M4-thin — SCM + DML + foreign change + WORM)"
+        run: |
+          cd services/measurement
+          uv sync --extra dev
+          uv run pytest src/engenox/measurement/__tests__/ -xvs
+
+      - name: "perception service tests (M5-thin — probe fleet + connectors + consent + refresh)"
+        run: |
+          mise exec -- go test ./internal/probe/... ./internal/connector/... ./internal/consent/... ./internal/refresh/...
+        working-directory: services/perception
+
+      - name: "web app build + typecheck + lint (M6-thin — Next.js 16, ConnectRPC, design-system)"
+        run: |
+          pnpm --filter web build
+          pnpm --filter web typecheck
+          pnpm --filter web lint
+
+  e2e:
+    name: E2E Journey (<10min)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: tests
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: toolchain (mise)
+        uses: jdx/mise-action@v2
+
+      - name: install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: install Playwright browsers
+        run: pnpm --filter @engenox/e2e install:browsers
+
+      - name: run E2E journey test
+        env:
+          E2E_BASE_URL: http://localhost:3000
+        run: |
+          pnpm --filter web dev &
+          WEB_PID=$!
+          sleep 10
+          pnpm --filter @engenox/e2e test:ci
+          kill $WEB_PID

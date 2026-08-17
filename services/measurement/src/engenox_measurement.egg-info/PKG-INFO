@@ -18,10 +18,14 @@ Requires-Dist: statsmodels>=0.14.0
 Requires-Dist: scikit-learn>=1.6.0
 Requires-Dist: orjson>=3.10.0
 Requires-Dist: cryptography>=44.0.0
+Requires-Dist: boto3>=1.35.0
 Requires-Dist: ruff>=0.15.0
 Requires-Dist: mypy>=1.13.0
 Requires-Dist: pytest>=8.3.0
 Requires-Dist: pytest-asyncio>=0.24.0
 Requires-Dist: pytest-cov>=5.0.0
-Requires-Dist: connectrpc>=0.3.0
-Requires-Dist: hypercorn>=0.15.0
+Provides-Extra: dev
+Requires-Dist: ruff>=0.15.0; extra == "dev"
+Requires-Dist: mypy>=1.13.0; extra == "dev"
+Requires-Dist: pandas-stubs>=3.0.3.260530; extra == "dev"
+Requires-Dist: scipy-stubs>=1.18.0.1; extra == "dev"

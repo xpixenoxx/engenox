@@ -16,7 +16,7 @@ name = "engenox-contracts"
 version = "0.1.0"
 description = "Engenox cross-language contracts (Protobuf-generated Python surface)."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
   # The protobuf RUNTIME must match the gencode the BSR `protocolbuffers/python` plugin
   # emits, or `import engenox.*._pb2` raises ValidateProtobufRuntimeVersion ("Runtime

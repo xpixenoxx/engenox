@@ -182,6 +182,7 @@ app.all("/controlplane.ControlPlaneService/*", async (c) => {
 
 // Health check endpoint
 app.get("/health", (c) => c.json({ status: "ok", service: "control-plane" }));
+app.get("/ready", (c) => c.json({ status: "ok", service: "control-plane" }));
 
 // Start server
 async function start(): Promise<void> {

@@ -49,7 +49,6 @@ plugins:
   - local: protoc-gen-es
     out: generated/ts
     opt:
-      - target=ts
       - import_extension=.js
 
   # Go via google.golang.org/protobuf (local, `go install`-ed). paths=source_relative

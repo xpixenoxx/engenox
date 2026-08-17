@@ -2,9 +2,14 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "baseUrl": ".",
-    "rootDir": ".",
     "outDir": "dist",
-    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "paths": {
+      "@engenox/contracts/*": ["../../pkg/contracts/generated/ts/*"],
+      "@engenox/temporal/*": ["../../services/temporal/src/*"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

@@ -1,0 +1,24 @@
+resources:
+  - https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+patches:
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/tolerations
+        value:
+          - key: workload
+            operator: Equal
+            value: database
+            effect: NoSchedule
+  - target:
+      kind: StatefulSet
+    patch: |-
+      - op: add
+        path: /spec/template/spec/tolerations
+        value:
+          - key: workload
+            operator: Equal
+            value: database
+            effect: NoSchedule

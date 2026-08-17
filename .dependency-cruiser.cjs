@@ -93,6 +93,7 @@ module.exports = {
     // negative-test corpus, check-lint-fires scans them by name), the codegen output (the
     // git-ignored generated/ tree is produced, not linted), node_modules, dist, and the
     // non-TS leaves (infra is OpenTofu; the .keep placeholders are not source).
+    // Also exclude Python virtual environments and vendor directories.
     exclude: {
       path: [
         "node_modules/.*",
@@ -105,8 +106,13 @@ module.exports = {
         "e2e/.*",
         ".*/\\.storybook/.*",
         ".*\\.keep$",
+        "\\.venv/.*",
+        "__pycache__/.*",
+        "\\.mypy_cache/.*",
+        "\\.pytest_cache/.*",
+        "\\.ruff_cache/.*",
       ],
     },
-    doNotFollow: { path: ["node_modules", "dist", "build", "generated"] },
+    doNotFollow: { path: ["node_modules", "dist", "build", "generated", ".venv", "__pycache__"] },
   },
 };

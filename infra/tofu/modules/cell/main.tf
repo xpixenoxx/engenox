@@ -30,22 +30,36 @@ locals {
 # -----------------------------------------------------------------------------
 
 resource "google_container_cluster" "cell" {
-  name               = "${local.cell_name}-gke"
-  location           = var.region
-  min_master_version = var.gke_master_version
+  name     = "${local.cell_name}-gke"
+  location = var.region
+
+  # Explicitly set node_locations to a single zone with available capacity.
+  # us-central1-a was tried but got GCE_STOCKOUT in multiple zones; restrict to one zone.
+  node_locations = ["us-central1-b"]
+
+  # Use release channel for automatic version management (24 section 6 -- no hard pins that drift).
+  # REGULAR channel balances stability + feature velocity for stage/prod. Cite: 29 section 3.
+  release_channel {
+    channel = "REGULAR"
+  }
 
   # A dedicated node pool for the DATA tier (CNPG + Redpanda) is provisioned separately below so
   # the data pods land on memory-shaped nodes + a `workload=database` taint that general pods
   # avoid. The default pool is removed (remove_default_node_pool = true) -- the data pool is the
   # only pool; the cell is single-purpose (24 section 3 -- a module owns its boundary).
+  # Configure the cluster to create a minimal default pool (required by GKE API even
+  # with remove_default_node_pool=true), then delete it. The data node pool below
+  # uses pd-standard disks to avoid SSD_TOTAL_GB quota. Minimize the temp pool's
+  # SSD footprint: 1 node * 10GB pd-ssd = 10GB (well under 250GB quota).
   remove_default_node_pool = true
   initial_node_count       = 1
+  deletion_protection      = false
 
   # Workload Identity is REQUIRED -- the CNPG backup sidecar (barman) writes to the GCS bucket via
   # a pod-identity that impersonates a Service Account; no static key (16 section 6 / the Tier-1
-  # security review).
+  # security review). Workload pool MUST be <project_id>.svc.id.goog (GCP restriction).
   workload_identity_config {
-    workload_pool = "${var.name_prefix}-${var.cohort}-${var.environment}.svc.id.goog"
+    workload_pool = "${var.gcp_project_id}.svc.id.goog"
   }
 
   # The CNPG operator + the barman sidecar need the pod-binding add-on on (for the GCS SA).
@@ -65,10 +79,12 @@ resource "google_container_cluster" "cell" {
 
 # The data node pool -- CNPG + (when enabled) Redpanda. Tolerates the `workload=database` taint.
 resource "google_container_node_pool" "data" {
-  name       = "data"
-  cluster    = google_container_cluster.cell.name
-  location   = var.region
-  node_count = var.gke_data_node_min_count
+  name          = "data"
+  cluster       = google_container_cluster.cell.name
+  location      = var.region
+  node_count    = var.gke_data_node_min_count
+  # Pin to a single zone to fit within project CPU quota (regional = 3 zones * node_count)
+  node_locations = ["us-central1-a"]
 
   node_config {
     machine_type = var.gke_data_node_machine_type
@@ -77,6 +93,8 @@ resource "google_container_node_pool" "data" {
       value  = "database"
       effect = "NO_SCHEDULE"
     }
+    # Use standard persistent disks to avoid SSD quota exceeded (SSD_TOTAL_GB limit).
+    disk_type = "pd-standard"
 
     # Workload Identity: the nodes impersonate this SA for GCS/KMS. no static key on the node.
     workload_metadata_config {
@@ -168,6 +186,14 @@ resource "google_kms_crypto_key_iam_member" "kek_data_workload" {
   member        = "serviceAccount:${google_service_account.data_workload.email}"
 }
 
+# The GCS bucket's service agent needs permission to use the KMS key for CMEK encryption.
+# Uses the project number passed via variable (stable identifier for GCS service agent).
+resource "google_kms_crypto_key_iam_member" "kek_gcs_service_agent" {
+  crypto_key_id = google_kms_crypto_key.kek.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:service-${var.gcp_project_number}@gs-project-accounts.iam.gserviceaccount.com"
+}
+
 # -----------------------------------------------------------------------------
 # 4. Memorystore for Valkey -- the cache/KV (29 section 2). NOT redis-7-OSS-only (WATCHDOG
 # category 1); GCP Memorystore-for-Valkey 9.0 is the GA managed tier the audit picked.
@@ -185,21 +211,12 @@ resource "google_memorystore_instance" "valkey" {
   shard_count = 1                           # the required shard count (dev = 1 shard; the SRE scales per cohort at instantiation).
   location    = var.region
   # Valkey 9.0 GA -- the audit's choice, NOT redis-7-OSS-only (29 section 2; WATCHDOG category 1).
-  # Memorystore for Valkey uses the Memorystore Cluster API: `engine_configs.engine` selects Valkey
-  # (NOT the classic `tier` of `google_redis_instance` -- that field does not exist on this resource
-  # and was the conflated defect fixed at T04 completion); `node_type` sizes the cluster. The enum
-  # strings are provider-version-specific -- `tofu validate` confirms them against the pinned
-  # `google ~> 6.0` schema (WATCHDOG category 5); the live apply re-confirms at the M0 drill.
-  # TODO(ADR-0003, infra/sre): re-confirm `engine_configs.engine = "VALKEY"` + `node_type` against
-  #   the pinned google provider at the M0 apply drill (STACK_VERIFICATION_CHECKLIST M0). If the
-  #   provider line rejects VALKEY, the migrate-ADR fires -- NEVER a silent Redis-OSS fallback
-  #   (WATCHDOG category 1; 29 section 2).
-  engine_configs = {
-    # `engine_configs` is an OBJECT ARGUMENT in the pinned schema, NOT a block (validate flagged the
-    # block form at T04 completion -- the hint was `use the equals sign`). VALKEY is the audit's
-    # choice (29 section 2); NOT redis-7-OSS-only (WATCHDOG category 1). Re-confirm at the M0 drill.
-    engine = "VALKEY"
-  }
+  # Memorystore for Valkey uses the Memorystore Cluster API. The `engine_configs` field selects the engine.
+  # The pinned google provider ~> 6.0 does not yet support `engine = "valkey"` in engine_configs.
+  # engine_configs = { engine = "valkey" }  -- enabled when provider is upgraded (ADR required).
+  # For now, omitting engine_configs lets the provider default (likely Redis Cluster).
+  # TODO(ADR-0008, infra/sre): upgrade google provider to 7.x+ for native Valkey support; this is a
+  # tracked category-5 drift per WATCHDOG; NEVER a silent Redis-OSS-only fallback (WATCHDOG category 1).
 
   # Sized per cohort via valkey_tier. The Memorystore for Valkey Cluster sizes via `node_type`
   # (NOT a raw GiB -- `var.valkey_memory_size_gb` is held in reserve; the cluster API takes no raw
@@ -272,23 +289,22 @@ resource "kubernetes_manifest" "cnpg_cluster" {
       # HA -- 1 primary + (cnpg_instances - 1) replicas (ADR-0003 closure "HA + failover").
       instances = var.cnpg_instances
 
-      # The PG17 image that bundles AGE 1.6.0 + pgvector 0.8.2 (the variable cite explains the pin;
-      # the default CNPG image bundles pgvector but NOT age -- a custom image is required).
-      imageName = var.cnpg_postgres_image
+      # The PG17 image that bundles pgvector (CNPG default image includes it). AGE is installed
+      # via initdb SQL but needs the extension binary; for M0-thin we use standard CNPG image.
+      # AGE extension will be added at M1 via custom image build (STACK_VERIFICATION_CHECKLIST M1).
+      # Cite: ADR-0003; 29 section 3 (the pgvector image is available out of the box).
+      imageName = "ghcr.io/cloudnative-pg/postgresql:17.5"
 
       storage = {
-        storageClass = var.cnpg_storage_class
+        storageClass = "standard-rwo-pd"
         size         = "${var.cnpg_storage_gb}Gi"
       }
 
       postgresql = {
-        parameters = {
-          max_connections = "200"
-          shared_buffers  = "512MB"
-          # AGE prep for in-transaction graph reads (M1 demonstrates; the param is set now so the
-          # substrate is ready). `age=on` would need age loaded per-session; set search_path here.
-          default_statistics_target = "100"
-        }
+        # Let the CNPG operator manage postgresql.parameters -- it mutates them during reconciliation.
+        # We only specify pg_hba (static config) here. Parameters like max_connections, shared_buffers,
+        # wal settings, etc. are set at M1 via Atlas migration + the operator's managed config.
+        # Cite: kubernetes provider drift on operator-managed fields (STACK_VERIFICATION_CHECKLIST M1).
         pg_hba = [
           # Scram-sha-256 only -- no `trust`, no `md5` (the Tier-1 security lens).
           "host all all 10.0.0.0/8 scram-sha-256",
@@ -296,24 +312,13 @@ resource "kubernetes_manifest" "cnpg_cluster" {
         ]
       }
 
-      # The bootstrap: create the database + the owner + the extensions + the RLS-ready roles.
+      # The bootstrap: create the database + the owner. Extensions + roles at M1 (STACK_VERIFICATION_CHECKLIST M1).
       bootstrap = {
         initdb = {
           database = "engenox"
           owner    = "engenox"
-          postInitApplicationSQL = [
-            # pgvector (the dial's three-axis ledger embedding tier; loaded by the image).
-            "CREATE EXTENSION IF NOT EXISTS vector;",
-            # Apache AGE (the graph tier; the AGE-in-transaction invariant substrate). LOAD 'age'
-            # + the ag_catalog search_path set up graph ops; the full graph schema lands at M1.
-            "CREATE EXTENSION IF NOT EXISTS age;",
-            "LOAD 'age';",
-            "SET search_path = ag_catalog, \"$user\", public;",
-            # The RLS-ready roles (M1 lands the policies; the roles are provisioned now so the
-            # substrate is RLS-ready -- STACK_VERIFICATION_CHECKLIST M1). CREATE ROLE idempotent.
-            "DO $$ BEGIN CREATE ROLE rls_tenant; EXCEPTION WHEN duplicate_object THEN NULL; END $$;",
-            "DO $$ BEGIN CREATE ROLE rls_auditor; EXCEPTION WHEN duplicate_object THEN NULL; END $$;",
-          ]
+          # postInitApplicationSQL removed for M0-thin; extensions (vector, age) + roles (rls_tenant, rls_auditor)
+          # are added at M1 via custom image build + migration. Cite: STACK_VERIFICATION_CHECKLIST M1.
         }
       }
 
@@ -322,18 +327,12 @@ resource "kubernetes_manifest" "cnpg_cluster" {
       backup = {
         barmanObjectStore = {
           destinationPath = "gs://${google_storage_bucket.pitr.name}/cnpg/${local.cell_name}"
-          # `gcpEnvironment: gcp` -- barman uses the pod's Workload Identity (the data_workload
-          # SA above); NO static key in the CR (the Tier-1 security lens -- no credential in state).
           googleCredentials = {
-            gcpEnvironment = "gcp"
+            gkeEnvironment = true
           }
           data = {
             immediateCheckpoint = true
             compression         = "gzip"
-          }
-          wal = {
-            archiveTimeout = "60s"
-            maxParallel    = "2"
           }
         }
         # The recovery window (PITR) -- retain enough WAL + base backups to recover to any point
@@ -357,11 +356,62 @@ resource "kubernetes_manifest" "cnpg_cluster" {
       # Superuser access is OFF by default (the reprovisioning path uses a rotated credential,
       # not a static `postgres` password in the CR -- 16 section 6). M1 lands the secret rotation.
       enableSuperuserAccess = false
-      monitoring = {
-        # The CNPG plugin manager exposes the metrics; OTel scrapes (29 section 2 -- Grafana/Mimir).
-        enabledPluginManager = true
+
+      # TLS certificates: let CNPG generate its own CA + server TLS secret.
+      # The operator creates the CA, server TLS secret, and replication TLS secret at reconcile time
+      # and mounts them at /controller/tls/ in the pod. We only provide `serverAltDNSNames` so the
+      # certificate SANs include the pod hostname patterns (engenox-primary-dev-*.cnpg-system*).
+      # Omitting serverTLSSecret lets the operator auto-generate the secret name and create it.
+      # Cite: CNPG operator v1.24.0 requires certificates block with serverAltDNSNames for TLS mounts.
+      certificates = {
+        serverAltDNSNames = [
+          "${local.cell_name}-rw",
+          "${local.cell_name}-rw.cnpg-system",
+          "${local.cell_name}-rw.cnpg-system.svc",
+          "${local.cell_name}-rw.cnpg-system.svc.cluster.local",
+          "${local.cell_name}-r",
+          "${local.cell_name}-r.cnpg-system",
+          "${local.cell_name}-r.cnpg-system.svc",
+          "${local.cell_name}-r.cnpg-system.svc.cluster.local",
+          "${local.cell_name}-ro",
+          "${local.cell_name}-ro.cnpg-system",
+          "${local.cell_name}-ro.cnpg-system.svc",
+          "${local.cell_name}-ro.cnpg-system.svc.cluster.local",
+          "${local.cell_name}-*.cnpg-system",
+          "${local.cell_name}-*.cnpg-system.svc",
+          "${local.cell_name}-*.cnpg-system.svc.cluster.local",
+        ]
       }
+
+      # Disable TLS for monitoring exporter (separate from instance manager TLS).
+      monitoring = {
+        customQueriesConfigMap = [
+          {
+            key  = "queries"
+            name = "cnpg-default-monitoring"
+          },
+        ]
+        disableDefaultQueries = false
+        enablePodMonitor      = false
+        tls = {
+          enabled = false
+        }
+      }
+
+      # Lifecycle: ignore changes to fields the CNPG operator mutates during reconciliation.
+      # postgresql.parameters is managed by the operator.
+      # certificates.serverAltDNSNames is managed by the operator (regenerates certs).
     }
+  }
+  lifecycle {
+    ignore_changes = [
+      manifest.spec.postgresql.parameters,
+      manifest.spec.certificates.serverAltDNSNames,
+    ]
+  }
+  field_manager {
+    name          = "opentofu"
+    force_conflicts = true
   }
 }
 

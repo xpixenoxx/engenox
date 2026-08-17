@@ -1,0 +1,13 @@
+# Security.txt - Engenox
+# https://securitytxt.org/
+# RFC 9116
+
+Contact: mailto:security@engenox.com
+Contact: https://engenox.com/security#contact
+Encryption: https://engenox.com/.well-known/pgp-key.asc
+Acknowledgments: https://engenox.com/security#acknowledgments
+Policy: https://engenox.com/security
+Hiring: https://engenox.com/careers#security
+Preferred-Languages: en
+Canonical: https://engenox.com/.well-known/security.txt
+Expires: 2027-01-15T00:00:00.000Z

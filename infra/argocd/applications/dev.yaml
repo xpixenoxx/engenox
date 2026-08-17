@@ -95,9 +95,9 @@ spec:
         factor: 2
         maxDuration: 3m
   revisionHistoryLimit: 10
-  syncWindows:
-    - kind: allow
-      schedule: "* * * * *"
+
+
+
       duration: 30m
       manualSync: false
 

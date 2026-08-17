@@ -4,6 +4,16 @@
 # declares the variables it sets + passes through (kubeconfig_path -- the two-phase apply lever).
 # Cites: ADR-0003; 16 section 2; T04.
 
+variable "gcp_project_id" {
+  description = "The GCP project ID for the cell's resources."
+  type        = string
+}
+
+variable "gcp_project_number" {
+  description = "The GCP project number for the cell's resources (used for GCS service agent IAM)."
+  type        = string
+}
+
 variable "kubeconfig_path" {
   description = "Path to a kubeconfig for the GKE cluster (resolved AFTER GKE exists -- the two-phase apply in the module README). Empty string = phase-1 (the kubernetes_manifest resources are not planned until phase-2). Passed through to the cell module."
   type        = string

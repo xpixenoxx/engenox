@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@engenox/verifier/*": ["../../libs/verifier/ts/src/*"],
+      "@engenox/crypto/*": ["../../libs/crypto/ts/src/*"],
+      "@engenox/kg/*": ["../../libs/kg/ts/src/*"],
+      "@engenox/cedar/*": ["../../libs/cedar/ts/src/*"]
+    },
+    "outDir": "dist",
+    "noEmit": false,
+    "allowImportingTsExtensions": false
+  },
+  "include": ["src/**/*", "__tests__/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

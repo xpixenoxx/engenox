@@ -16,7 +16,7 @@ data:
   VALKEY_PORT: "6379"
 
   # Temporal
-  TEMPORAL_ADDRESS: engenox-temporal-frontend.engenox.svc.cluster.local:7233
+  TEMPORAL_ADDRESS: engenox-temporal-frontend.temporal.svc.cluster.local:7233
 
   # Redpanda (disabled in dev)
   REDPANDA_BROKERS: ""

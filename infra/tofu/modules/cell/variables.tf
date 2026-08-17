@@ -31,6 +31,16 @@ variable "region" {
   default     = "us-central1"
 }
 
+variable "gcp_project_id" {
+  description = "The GCP project ID for the cell's resources."
+  type        = string
+}
+
+variable "gcp_project_number" {
+  description = "The GCP project number for the cell's resources (used for GCS service agent IAM)."
+  type        = string
+}
+
 variable "name_prefix" {
   description = "The resource-name prefix (project-derived). Resources are <prefix>-<cohort>-<env>-<role>."
   type        = string
@@ -88,15 +98,15 @@ variable "cnpg_postgres_image" {
 # --- GKE (the cell's compute) --------------------------------------------------
 
 variable "gke_master_version" {
-  description = "The GKE control-plane version. Pinned (< 1.x latest) per 24 section 6 / no-`:latest`."
+  description = "The GKE control-plane version. Pinned (< 1.x latest) per 24 section 6 / no-`:latest`. asia-south1 supports 1.30."
   type        = string
-  default     = "1.31"
+  default     = "1.30"
 }
 
 variable "gke_data_node_machine_type" {
   description = "The machine type for the data-tier node pool (CNPG + Redpanda pods). Postgres likes memory + local SSD; sized per cohort at instantiation."
   type        = string
-  default     = "n2-standard-4"
+  default     = "e2-small"
 }
 
 variable "gke_data_node_min_count" {

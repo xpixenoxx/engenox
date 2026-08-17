@@ -1,0 +1,25 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: engenox-primary-dev
+  namespace: cnpg-system
+spec:
+  probes:
+    startup:
+      spec:
+        httpGet:
+          scheme: HTTP
+          port: 8000
+          path: /healthz
+    readiness:
+      spec:
+        httpGet:
+          scheme: HTTP
+          port: 8000
+          path: /readyz
+    liveness:
+      spec:
+        httpGet:
+          scheme: HTTP
+          port: 8000
+          path: /healthz

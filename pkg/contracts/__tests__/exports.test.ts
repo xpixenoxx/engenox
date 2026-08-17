@@ -33,9 +33,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, "..");
 
 // Refine the parsed JSON at the system boundary (CLAUDE.md §6 - the sanctioned `as` for a
-// DB/JSON row refined on read). The exports map is { "./subpath": "./path/to/file.ts", ... }
-// plus the "./package.json" self-entry; values are strings.
-type ExportsMap = Record<string, string>;
+// DB/JSON row refined on read). The exports map can have string values (simple) or object
+// values (conditional exports with "types", "import", "default").
+type ExportTarget = string | Record<string, string>;
+type ExportsMap = Record<string, ExportTarget>;
 const parsed: unknown = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
 const exportsMap = (parsed as { exports?: unknown }).exports as ExportsMap | undefined;
 
@@ -46,8 +47,8 @@ describe("@engenox/contracts exports map (A0)", () => {
 
   it("declares the A0 subpaths (the MVP entity sub-packages + the gateway seam surface)", () => {
     const keys = subpaths.map(([k]) => k).sort();
-    // The T02 baseline (entity/event/service/policy v1) + the A0 additions. Additive only -
-    // every original entry is still present (strict-add-only, 14 §5).
+    // The T02 baseline (entity/event/service/policy v1) + the A0 additions + M3-thin services.
+    // Additive only - every original entry is still present (strict-add-only, 14 §5).
     expect(keys).toEqual(
       [
         "./entity/v1",
@@ -60,6 +61,19 @@ describe("@engenox/contracts exports map (A0)", () => {
         "./policy/v1",
         "./service/v1",
         "./service/v1/gateway",
+        // M3-thin services (ADR-0007 thin-column-then-thicken)
+        "./service/v1/controlplane",
+        "./service/v1/decision",
+        "./service/v1/action",
+        "./service/v1/measurement",
+        "./service/v1/perception",
+        // ConnectRPC client exports (M3-thin gateway + services)
+        "./service/v1/action/connect",
+        "./service/v1/controlplane/connect",
+        "./service/v1/decision/connect",
+        "./service/v1/gateway/connect",
+        "./service/v1/measurement/connect",
+        "./service/v1/perception/connect",
       ].sort(),
     );
   });
@@ -68,11 +82,16 @@ describe("@engenox/contracts exports map (A0)", () => {
     // The failing mode this seals: a typo'd or stale target (e.g. a renamed proto whose
     // exports entry wasn't updated) dangles a public import path. Every target must exist.
     for (const [subpath, target] of subpaths) {
-      const targetPath = join(packageRoot, target);
-      expect(
-        existsSync(targetPath),
-        `export ${subpath} -> ${target} (missing: ${targetPath})`,
-      ).toBe(true);
+      // Handle conditional exports (objects with "types", "import", "default" keys)
+      // Check that at least one target file exists.
+      const targets = typeof target === "string" ? [target] : Object.values(target);
+      for (const t of targets) {
+        const targetPath = join(packageRoot, t);
+        expect(
+          existsSync(targetPath),
+          `export ${subpath} -> ${t} (missing: ${targetPath})`,
+        ).toBe(true);
+      }
     }
   });
 });

@@ -11,9 +11,10 @@
 
 module github.com/engenox/contracts
 
-go 1.24
+go 1.25.0
 
 require (
+	connectrpc.com/connect v1.20.0
 	google.golang.org/grpc v1.68.0
 	google.golang.org/protobuf v1.36.11
 )

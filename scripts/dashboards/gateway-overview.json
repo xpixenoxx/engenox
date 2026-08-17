@@ -1,0 +1,178 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": "Mimir",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 80 },
+              { "color": "red", "value": 95 }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "sum(rate(gateway_seam_latency_seconds_bucket[5m])) by (le, seam) / sum(rate(gateway_seam_latency_seconds_count[5m])) by (seam)",
+          "legendFormat": "{{seam}} p99",
+          "refId": "A"
+        }
+      ],
+      "title": "Gateway Seam Latency (p99)",
+      "type": "gauge"
+    },
+    {
+      "datasource": "Mimir",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "lineWidth": 1 },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        { "expr": "histogram_quantile(0.99, sum(rate(gateway_seam_latency_seconds_bucket[5m])) by (le, seam))", "legendFormat": "{{seam}}", "refId": "A" }
+      ],
+      "title": "Gateway Seam Latency p99 Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Mimir",
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "reqps" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 3,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        { "expr": "sum(rate(gateway_seam_requests_total[5m])) by (seam, status)", "legendFormat": "{{seam}} - {{status}}", "refId": "A" }
+      ],
+      "title": "Gateway Seam Request Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Mimir",
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 80 }, { "color": "red", "value": 95 }] }, "unit": "percent" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 4,
+      "options": { "displayMode": "gradient", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showThresholdLabels": true, "showThresholdMarkers": true },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        { "expr": "verifier_reject_rate_percent", "legendFormat": "Reject Rate %", "refId": "A" }
+      ],
+      "title": "Verifier Reject Rate",
+      "type": "gauge"
+    },
+    {
+      "datasource": "Mimir",
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineInterpolation": "linear", "lineWidth": 1 }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "USD" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 5,
+      "options": { "legend": { "calcs": ["mean", "max", "sum"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        { "expr": "sum(rate(token_cost_usd_per_seam[5m])) by (seam, model_family, model_version)", "legendFormat": "{{seam}} - {{model_family}}/{{model_version}}", "refId": "A" }
+      ],
+      "title": "Token Cost Rate (USD/min)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Mimir",
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "percent" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 6,
+      "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        { "expr": "conformal_coverage_by_segment", "legendFormat": "{{segment}}", "refId": "A" }
+      ],
+      "title": "Conformal Coverage by Segment",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Mimir",
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineInterpolation": "linear", "lineWidth": 1 }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "ops" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "id": 7,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        { "expr": "sum(rate(atlas_cycle_duration_seconds_bucket[5m])) by (le, phase)", "legendFormat": "{{phase}}", "refId": "A" }
+      ],
+      "title": "AtlasCycle Phase Duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Mimir",
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 80 }, { "color": "red", "value": 95 }] }, "unit": "percent" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "id": 8,
+      "options": { "displayMode": "gradient", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showThresholdLabels": true, "showThresholdMarkers": true },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        { "expr": "dial_escalation_denied_percent", "legendFormat": "Denied %", "refId": "A" }
+      ],
+      "title": "Dial Escalation Denied Rate",
+      "type": "gauge"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["engenox", "gateway", "overview"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "title": "Engenox Gateway Overview",
+  "uid": "engenox-gateway-overview",
+  "version": 1,
+  "weekStart": ""
+}

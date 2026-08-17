@@ -1,0 +1,52 @@
+@import "tailwindcss";
+@source "../../../design-system/src";
+@import "@engenox/design-system/src/global.css";
+
+@theme {
+  --color-primary: var(--color-brand);
+  --color-primary-foreground: var(--color-text-inverse);
+  --color-secondary: var(--color-surface-muted);
+  --color-secondary-foreground: var(--color-text);
+  --color-muted: var(--color-surface-muted);
+  --color-muted-foreground: var(--color-text-muted);
+  --color-accent: var(--color-accent);
+  --color-accent-foreground: var(--color-text-inverse);
+  --color-destructive: var(--color-critical);
+  --color-destructive-foreground: var(--color-text-inverse);
+  --color-border: var(--color-border);
+  --color-input: var(--color-border);
+  --color-ring: var(--color-brand);
+  --color-background: var(--color-background);
+  --color-foreground: var(--color-text);
+  --color-card: var(--color-surface-raised);
+  --color-card-foreground: var(--color-text);
+  --color-popover: var(--color-surface-raised);
+  --color-popover-foreground: var(--color-text);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+  --radius-full: var(--radius-full);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}

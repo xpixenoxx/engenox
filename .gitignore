@@ -50,3 +50,40 @@ Thumbs.db
 
 # langfuse / otel local
 .langfuse/
+
+# Binaries
+*.exe
+argocd.exe
+
+# Secrets/Certs (critical!)
+*.key
+*.crt
+*.csr
+*.pem
+ca.key
+server.key
+
+# Logs
+*.log
+activity-execution.log
+downloaded-logs-*
+
+# OS/Temp
+nul
+null
+*.tmp
+*.temp
+
+# Build outputs
+*.tsbuildinfo
+dist/
+build/
+
+# OpenTofu binary (downloaded by installer)
+infra/tofu/envs/**/linux-amd64/
+infra/tofu/envs/**/darwin-arm64/
+infra/tofu/envs/**/windows-amd64/
+
+# Playwright browsers (downloaded by playwright install)
+e2e/Engenoxpw-browsers/
+e2e/*/pw-browsers/

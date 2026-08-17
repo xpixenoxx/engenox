@@ -1,0 +1,284 @@
+# infra/argocd/applications/prod.yaml
+# Argo CD Applications for Production environment
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: engenox-prod-infra
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: engenox-prod-infra
+    app.kubernetes.io/part-of: engenox
+    environment: prod
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: engenox
+  source:
+    repoURL: https://github.com/pixenox/engenox.git
+    targetRevision: main
+    path: infra/kustomize/overlays/prod/infra
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: engenox-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - Validate=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  syncWindows:
+    - kind: allow
+      schedule: "0 2 * * 0"  # Sundays 2 AM UTC
+      duration: 4h
+      manualSync: true
+  revisionHistoryLimit: 20
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: engenox-prod-apps
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: engenox-prod-apps
+    app.kubernetes.io/part-of: engenox
+    environment: prod
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: engenox
+  source:
+    repoURL: https://github.com/pixenox/engenox.git
+    targetRevision: main
+    path: infra/kustomize/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: engenox
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - Validate=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  syncWindows:
+    - kind: allow
+      schedule: "0 3 * * *"  # Daily 3 AM UTC
+      duration: 3h
+      manualSync: true
+  revisionHistoryLimit: 20
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      jsonPointers:
+        - /data
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/template/spec/containers/0/image
+    - group: ""
+      kind: ConfigMap
+      jsonPointers:
+        - /data
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: engenox-prod-observability
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: engenox-prod-observability
+    app.kubernetes.io/part-of: engenox
+    environment: prod
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: engenox
+  source:
+    repoURL: https://github.com/pixenox/engenox.git
+    targetRevision: main
+    path: infra/kustomize/overlays/prod/observability
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - Validate=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  syncWindows:
+    - kind: allow
+      schedule: "0 1 * * *"  # Daily 1 AM UTC
+      duration: 2h
+      manualSync: true
+  revisionHistoryLimit: 20
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: engenox-prod-clickhouse
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: engenox-prod-clickhouse
+    app.kubernetes.io/part-of: engenox
+    environment: prod
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: engenox
+  source:
+    repoURL: https://github.com/pixenox/engenox.git
+    targetRevision: main
+    path: infra/kustomize/overlays/prod/clickhouse
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: clickhouse
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - Validate=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  syncWindows:
+    - kind: allow
+      schedule: "0 1 * * 0"  # Sundays 1 AM UTC
+      duration: 3h
+      manualSync: true
+  revisionHistoryLimit: 20
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: engenox-prod-temporal
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: engenox-prod-temporal
+    app.kubernetes.io/part-of: engenox
+    environment: prod
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: engenox
+  source:
+    repoURL: https://github.com/pixenox/engenox.git
+    targetRevision: main
+    path: infra/kustomize/overlays/prod/temporal
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: temporal
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - Validate=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  syncWindows:
+    - kind: allow
+      schedule: "0 1 * * 0"  # Sundays 1 AM UTC
+      duration: 3h
+      manualSync: true
+  revisionHistoryLimit: 20
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: engenox-prod-web
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: engenox-prod-web
+    app.kubernetes.io/part-of: engenox
+    environment: prod
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: engenox
+  source:
+    repoURL: https://github.com/pixenox/engenox.git
+    targetRevision: main
+    path: web
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: engenox-web
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - Validate=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  syncWindows:
+    - kind: allow
+      schedule: "0 3 * * *"  # Daily 3 AM UTC
+      duration: 3h
+      manualSync: true
+  revisionHistoryLimit: 20
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/template/spec/containers/0/image

@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cnpg-controller-manager
+  namespace: cnpg-system
+spec:
+  template:
+    spec:
+      tolerations:
+      - effect: NoSchedule
+        key: workload
+        operator: Equal
+        value: database
+      - effect: NoExecute
+        key: node.kubernetes.io/not-ready
+        operator: Exists
+        tolerationSeconds: 300
+      - effect: NoExecute
+        key: node.kubernetes.io/unreachable
+        operator: Exists
+        tolerationSeconds: 300

@@ -69,6 +69,7 @@ app.all("/engenox.service.v1.DecisionService/*", async (c) => {
 
 // Health check endpoint
 app.get("/health", (c) => c.json({ status: "ok", service: "decision" }));
+app.get("/ready", (c) => c.json({ status: "ok", service: "decision" }));
 
 // Start server
 serve({

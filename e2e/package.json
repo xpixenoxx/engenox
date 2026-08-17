@@ -1,0 +1,19 @@
+{
+  "name": "@engenox/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:ci": "playwright test --reporter=junit,line",
+    "install:browsers": "playwright install --with-deps chromium"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.48.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "typescript": "^5.6.0"
+  }
+}

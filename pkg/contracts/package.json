@@ -8,16 +8,90 @@
     "node": ">=22"
   },
   "exports": {
-    "./entity/v1": "./generated/ts/engenox/entity/v1/entity_pb.ts",
-    "./entity/v1/surface": "./generated/ts/engenox/entity/v1/surface_pb.ts",
-    "./entity/v1/brand": "./generated/ts/engenox/entity/v1/brand_pb.ts",
-    "./entity/v1/conflict": "./generated/ts/engenox/entity/v1/conflict_pb.ts",
-    "./entity/v1/intervention": "./generated/ts/engenox/entity/v1/intervention_pb.ts",
-    "./entity/v1/integrity": "./generated/ts/engenox/entity/v1/integrity_pb.ts",
-    "./event/v1": "./generated/ts/engenox/event/v1/event_pb.ts",
-    "./service/v1": "./generated/ts/engenox/service/v1/service_pb.ts",
-    "./service/v1/gateway": "./generated/ts/engenox/service/v1/gateway_pb.ts",
-    "./policy/v1": "./generated/ts/engenox/policy/v1/policy_pb.ts",
+    "./entity/v1": {
+      "types": "./generated/ts/engenox/entity/v1/entity_pb.d.ts",
+      "import": "./generated/ts/engenox/entity/v1/entity_pb.js"
+    },
+    "./entity/v1/surface": {
+      "types": "./generated/ts/engenox/entity/v1/surface_pb.d.ts",
+      "import": "./generated/ts/engenox/entity/v1/surface_pb.js"
+    },
+    "./entity/v1/brand": {
+      "types": "./generated/ts/engenox/entity/v1/brand_pb.d.ts",
+      "import": "./generated/ts/engenox/entity/v1/brand_pb.js"
+    },
+    "./entity/v1/conflict": {
+      "types": "./generated/ts/engenox/entity/v1/conflict_pb.d.ts",
+      "import": "./generated/ts/engenox/entity/v1/conflict_pb.js"
+    },
+    "./entity/v1/intervention": {
+      "types": "./generated/ts/engenox/entity/v1/intervention_pb.d.ts",
+      "import": "./generated/ts/engenox/entity/v1/intervention_pb.js"
+    },
+    "./entity/v1/integrity": {
+      "types": "./generated/ts/engenox/entity/v1/integrity_pb.d.ts",
+      "import": "./generated/ts/engenox/entity/v1/integrity_pb.js"
+    },
+    "./event/v1": {
+      "types": "./generated/ts/engenox/event/v1/event_pb.d.ts",
+      "import": "./generated/ts/engenox/event/v1/event_pb.js"
+    },
+    "./service/v1": {
+      "types": "./generated/ts/engenox/service/v1/service_pb.d.ts",
+      "import": "./generated/ts/engenox/service/v1/service_pb.js"
+    },
+    "./service/v1/gateway": {
+      "types": "./generated/ts/engenox/service/v1/gateway_pb.d.ts",
+      "import": "./generated/ts/engenox/service/v1/gateway_pb.js"
+    },
+    "./service/v1/gateway/connect": {
+      "types": "./generated/ts/engenox/service/v1/gateway_pb.d.ts",
+      "import": "./generated/ts/engenox/service/v1/gateway_pb.js"
+    },
+    "./service/v1/controlplane": {
+      "types": "./generated/ts/engenox/service/v1/controlplane_pb.d.ts",
+      "import": "./generated/ts/engenox/service/v1/controlplane_pb.js"
+    },
+    "./service/v1/controlplane/connect": {
+      "types": "./generated/ts/engenox/service/v1/controlplane_pb.d.ts",
+      "import": "./generated/ts/engenox/service/v1/controlplane_pb.js"
+    },
+    "./service/v1/decision": {
+      "types": "./generated/ts/engenox/service/v1/decision_pb.d.ts",
+      "import": "./generated/ts/engenox/service/v1/decision_pb.js"
+    },
+    "./service/v1/decision/connect": {
+      "types": "./generated/ts/engenox/service/v1/decision_pb.d.ts",
+      "import": "./generated/ts/engenox/service/v1/decision_pb.js"
+    },
+    "./service/v1/action": {
+      "types": "./generated/ts/engenox/service/v1/action_pb.d.ts",
+      "import": "./generated/ts/engenox/service/v1/action_pb.js"
+    },
+    "./service/v1/action/connect": {
+      "types": "./generated/ts/engenox/service/v1/action_pb.d.ts",
+      "import": "./generated/ts/engenox/service/v1/action_pb.js"
+    },
+    "./service/v1/measurement": {
+      "types": "./generated/ts/engenox/service/v1/measurement_pb.d.ts",
+      "import": "./generated/ts/engenox/service/v1/measurement_pb.js"
+    },
+    "./service/v1/measurement/connect": {
+      "types": "./generated/ts/engenox/service/v1/measurement_pb.d.ts",
+      "import": "./generated/ts/engenox/service/v1/measurement_pb.js"
+    },
+    "./service/v1/perception": {
+      "types": "./generated/ts/engenox/service/v1/service_pb.d.ts",
+      "import": "./generated/ts/engenox/service/v1/service_pb.js"
+    },
+    "./service/v1/perception/connect": {
+      "types": "./generated/ts/engenox/service/v1/service_pb.d.ts",
+      "import": "./generated/ts/engenox/service/v1/service_pb.js"
+    },
+    "./policy/v1": {
+      "types": "./generated/ts/engenox/policy/v1/policy_pb.d.ts",
+      "import": "./generated/ts/engenox/policy/v1/policy_pb.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {

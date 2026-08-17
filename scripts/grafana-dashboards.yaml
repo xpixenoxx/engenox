@@ -1,0 +1,13 @@
+# grafana-dashboards.yaml — Grafana dashboard provisioning
+apiVersion: 1
+
+providers:
+  - name: 'Engenox Dashboards'
+    orgId: 1
+    folder: 'Engenox'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

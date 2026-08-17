@@ -1,0 +1,47 @@
+# e2e.yaml — the E2E journey gate (25 §E2E + CLAUDE.md §7).
+#
+# Runs the <10-minute Playwright journey against a live dev server.
+# `needs: tests` (the orchestrator runs it after the tests gate passes).
+#
+# M0-thin: single journey test (conflict → propose → measure → learn) on every PR.
+# The journey test is the candor floor for the web product — it must pass to merge.
+#
+# Cites: 25 §3; 17 §4; 23 §3; CLAUDE.md §7 + §12; T06 (the orchestrator).
+
+name: e2e
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: E2E Journey (<10min)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: toolchain (mise — the single source per mise.toml; 29 §6)
+        uses: jdx/mise-action@v2
+
+      - name: install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: install Playwright browsers
+        run: pnpm --filter @engenox/e2e install:browsers
+
+      - name: run E2E journey test
+        env:
+          E2E_BASE_URL: http://localhost:3000
+        run: |
+          pnpm --filter web dev &
+          WEB_PID=$!
+          sleep 10
+          pnpm --filter @engenox/e2e test:ci
+          kill $WEB_PID
